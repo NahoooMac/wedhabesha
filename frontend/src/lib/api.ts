@@ -1,0 +1,1466 @@
+import { auth } from '../config/firebase';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+// Error types for better error handling
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+    public details?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+export class NetworkError extends Error {
+  constructor(message: string = 'Network connection failed') {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+export class TimeoutError extends Error {
+  constructor(message: string = 'Request timed out') {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+// Retry configuration
+interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  backoffFactor: number;
+  retryCondition?: (error: Error) => boolean;
+}
+
+const defaultRetryConfig: RetryConfig = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000,
+  backoffFactor: 2,
+  retryCondition: (error) => {
+    // Retry on network errors and 5xx server errors
+    if (error instanceof NetworkError || error instanceof TimeoutError) {
+      return true;
+    }
+    if (error instanceof ApiError) {
+      return error.status >= 500 || error.status === 408 || error.status === 429;
+    }
+    return false;
+  },
+};
+
+// Sleep utility for delays
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Calculate retry delay with exponential backoff
+const calculateRetryDelay = (attempt: number, config: RetryConfig): number => {
+  const delay = config.baseDelay * Math.pow(config.backoffFactor, attempt - 1);
+  return Math.min(delay, config.maxDelay);
+};
+
+// Enhanced fetch with timeout
+const fetchWithTimeout = async (
+  url: string, 
+  options: RequestInit = {}, 
+  timeout: number = 30000
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new TimeoutError();
+      }
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        throw new NetworkError();
+      }
+    }
+    
+    throw error;
+  }
+};
+
+class ApiClient {
+  private baseURL: string;
+
+  constructor(baseURL: string) {
+    this.baseURL = baseURL;
+  }
+
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        headers.Authorization = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Failed to get Firebase token:', error);
+      }
+    }
+
+    // Check for JWT token in localStorage (for traditional auth)
+    // Try both jwt_token and access_token for compatibility
+    const jwtToken = localStorage.getItem('jwt_token') || localStorage.getItem('access_token');
+    if (jwtToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${jwtToken}`;
+    }
+
+    return headers;
+  }
+
+  private async makeRequest<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    retryConfig: Partial<RetryConfig> = {}
+  ): Promise<T> {
+    const config = { ...defaultRetryConfig, ...retryConfig };
+    const url = `${this.baseURL}${endpoint}`;
+    
+    // Get auth headers
+    const headers = await this.getAuthHeaders();
+    const requestOptions = {
+      ...options,
+      headers: {
+        ...headers,
+        ...((options.headers as Record<string, string>) || {}),
+      },
+    };
+
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= config.maxRetries + 1; attempt++) {
+      try {
+        const response = await fetchWithTimeout(url, requestOptions);
+
+        // Handle HTTP errors
+        if (!response.ok) {
+          let errorMessage = `HTTP ${response.status}`;
+          let errorCode: string | undefined;
+          let errorDetails: any;
+
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.detail || errorMessage;
+            errorCode = errorData.error_code || errorData.code;
+            errorDetails = errorData.details;
+          } catch {
+            // If we can't parse error response, use status text
+            errorMessage = response.statusText || errorMessage;
+          }
+
+          const apiError = new ApiError(errorMessage, response.status, errorCode, errorDetails);
+          
+          // Don't retry client errors (4xx) except for specific cases
+          if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+            throw apiError;
+          }
+          
+          lastError = apiError;
+        } else {
+          // Success - parse and return response
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            return await response.json();
+          }
+          return response as unknown as T;
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        
+        // Don't retry if it's the last attempt or if retry condition is not met
+        if (attempt > config.maxRetries || !config.retryCondition!(lastError)) {
+          break;
+        }
+        
+        // Wait before retrying
+        const delay = calculateRetryDelay(attempt, config);
+        console.warn(`API request failed (attempt ${attempt}/${config.maxRetries + 1}), retrying in ${delay}ms:`, lastError.message);
+        await sleep(delay);
+      }
+    }
+
+    throw lastError!;
+  }
+
+  async get<T>(endpoint: string, retryConfig?: Partial<RetryConfig>): Promise<T> {
+    return this.makeRequest<T>(endpoint, { method: 'GET' }, retryConfig);
+  }
+
+  async post<T>(endpoint: string, data?: any, retryConfig?: Partial<RetryConfig>): Promise<T> {
+    return this.makeRequest<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    }, retryConfig);
+  }
+
+  async put<T>(endpoint: string, data?: any, retryConfig?: Partial<RetryConfig>): Promise<T> {
+    return this.makeRequest<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    }, retryConfig);
+  }
+
+  async delete<T>(endpoint: string, retryConfig?: Partial<RetryConfig>): Promise<T> {
+    return this.makeRequest<T>(endpoint, { method: 'DELETE' }, retryConfig);
+  }
+}
+
+export const apiClient = new ApiClient(API_BASE_URL);
+
+// Wedding API functions
+export const weddingApi = {
+  // Get current user's wedding
+  getMyWedding: () => apiClient.get<Wedding>('/api/v1/weddings/me'),
+  
+  // Create a new wedding
+  createWedding: (data: WeddingCreateRequest) => 
+    apiClient.post<WeddingCreateResponse>('/api/v1/weddings', data),
+  
+  // Update wedding details
+  updateWedding: (weddingId: number, data: WeddingUpdateRequest) =>
+    apiClient.put<Wedding>(`/api/v1/weddings/${weddingId}`, data),
+  
+  // Get wedding by ID
+  getWedding: (weddingId: number) =>
+    apiClient.get<Wedding>(`/api/v1/weddings/${weddingId}`),
+  
+  // Refresh wedding code
+  refreshWeddingCode: (weddingId: number) =>
+    apiClient.post<{ message: string; wedding: Wedding }>(`/api/v1/weddings/${weddingId}/refresh-code`, {}),
+  
+  // Update staff PIN
+  updateStaffPin: (weddingId: number, newPin: string) =>
+    apiClient.post<{ message: string; wedding_code: string }>(`/api/v1/weddings/${weddingId}/update-pin`, { new_pin: newPin }),
+};
+
+// Guest API functions
+export const guestApi = {
+  // Get wedding guests
+  getGuests: (weddingId: number) =>
+    apiClient.get<Guest[]>(`/api/v1/guests/wedding/${weddingId}`),
+  
+  // Add a new guest
+  addGuest: (weddingId: number, data: GuestCreateRequest) =>
+    apiClient.post<Guest>(`/api/v1/guests/wedding/${weddingId}`, data),
+  
+  // Update guest
+  updateGuest: (weddingId: number, guestId: number, data: GuestUpdateRequest) =>
+    apiClient.put<Guest>(`/api/v1/guests/${guestId}`, data),
+  
+  // Delete guest
+  deleteGuest: (weddingId: number, guestId: number) =>
+    apiClient.delete(`/api/v1/guests/${guestId}`),
+  
+  // Get guest QR code
+  getGuestQRCode: (guestId: number) =>
+    apiClient.get<{qr_code: string, guest_name: string, qr_code_image: string}>(`/api/v1/guests/${guestId}/qr-code`),
+  
+  // Bulk import guests (placeholder - not implemented in backend yet)
+  bulkImportGuests: (weddingId: number, data: BulkGuestImportRequest) =>
+    apiClient.post<BulkGuestImportResponse>(`/api/v1/guests/wedding/${weddingId}/bulk-import`, data),
+  
+  // Bulk import guests from CSV
+  bulkImportGuestsCSV: async (weddingId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Get auth headers the same way as other API calls
+    const headers: Record<string, string> = {};
+    
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        headers.Authorization = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Failed to get Firebase token:', error);
+      }
+    }
+
+    // Check for JWT token in localStorage (for traditional auth)
+    // Try both jwt_token and access_token for compatibility
+    const jwtToken = localStorage.getItem('jwt_token') || localStorage.getItem('access_token');
+    if (jwtToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${jwtToken}`;
+    }
+    
+    return fetch(`${API_BASE_URL}/api/v1/guests/wedding/${weddingId}/bulk-import-csv`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    });
+  },
+};
+
+// Budget API functions
+export const budgetApi = {
+  // Create wedding budget
+  createBudget: (weddingId: number, data: BudgetCreateRequest) =>
+    apiClient.post<BudgetResponse>(`/api/v1/budget/${weddingId}`, data),
+  
+  // Get wedding budget
+  getBudget: (weddingId: number) =>
+    apiClient.get<BudgetResponse>(`/api/v1/budget/${weddingId}`),
+  
+  // Update wedding budget
+  updateBudget: (weddingId: number, data: BudgetUpdateRequest) =>
+    apiClient.put<BudgetResponse>(`/api/v1/budget/${weddingId}`, data),
+  
+  // Get budget summary
+  getBudgetSummary: (weddingId: number) =>
+    apiClient.get<BudgetSummary>(`/api/v1/budget/${weddingId}/summary`),
+  
+  // Add budget category
+  addCategory: (weddingId: number, data: BudgetCategoryCreateRequest) =>
+    apiClient.post<BudgetCategoryResponse>(`/api/v1/budget/${weddingId}/categories`, data),
+  
+  // Update budget category
+  updateCategory: (categoryId: number, data: BudgetCategoryUpdateRequest) =>
+    apiClient.put<BudgetCategoryResponse>(`/api/v1/budget/categories/${categoryId}`, data),
+  
+  // Add expense
+  addExpense: (data: ExpenseCreateRequest) =>
+    apiClient.post<ExpenseResponse>('/api/v1/budget/expenses', data),
+  
+  // Get expenses
+  getExpenses: (weddingId: number, categoryId?: number) => {
+    const params = categoryId ? `?category_id=${categoryId}` : '';
+    return apiClient.get<ExpenseResponse[]>(`/api/v1/budget/expenses/${weddingId}${params}`);
+  },
+  
+  // Update expense
+  updateExpense: (expenseId: number, data: ExpenseUpdateRequest) =>
+    apiClient.put<ExpenseResponse>(`/api/v1/budget/expenses/${expenseId}`, data),
+  
+  // Delete expense
+  deleteExpense: (expenseId: number) =>
+    apiClient.delete(`/api/v1/budget/expenses/${expenseId}`),
+};
+
+// Staff Check-In API functions
+export const staffApi = {
+  // Verify staff credentials
+  verifyCredentials: (data: StaffVerificationRequest) =>
+    fetch(`${API_BASE_URL}/api/v1/auth/staff/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    }),
+
+  // Scan QR code for check-in
+  scanQRCode: (qrCode: string, staffToken: string) =>
+    fetch(`${API_BASE_URL}/api/v1/checkin/scan-qr`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${staffToken}`
+      },
+      body: JSON.stringify({ qr_code: qrCode }),
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    }),
+
+  // Manual check-in
+  manualCheckIn: (guestId: number, staffToken: string) =>
+    fetch(`${API_BASE_URL}/api/v1/checkin/manual`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${staffToken}`
+      },
+      body: JSON.stringify({ guest_id: guestId }),
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    }),
+
+  // Get check-in statistics
+  getStats: (staffToken: string) =>
+    fetch(`${API_BASE_URL}/api/v1/checkin/stats`, {
+      headers: {
+        'Authorization': `Bearer ${staffToken}`
+      }
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    }),
+
+  // Get guest list with status
+  getGuests: (staffToken: string, search?: string) => {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    return fetch(`${API_BASE_URL}/api/v1/checkin/guests${params}`, {
+      headers: {
+        'Authorization': `Bearer ${staffToken}`
+      }
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    });
+  },
+};
+
+// API response types
+export interface ApiError {
+  error_code: string;
+  message: string;
+  details?: Record<string, any>;
+  timestamp: string;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  user_type: 'COUPLE' | 'VENDOR' | 'ADMIN';
+  auth_provider: 'GOOGLE' | 'EMAIL';
+  firebase_uid?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+  requires2FA?: boolean;
+  message?: string;
+  userId?: number;
+  email?: string;
+  phone?: string;
+}
+
+export interface Wedding {
+  id: number;
+  wedding_code: string;
+  wedding_date: string;
+  venue_name: string;
+  venue_address: string;
+  expected_guests: number;
+  invitation_template_id?: string;
+  invitation_customization?: string;
+  created_at: string;
+}
+
+export interface WeddingCreateRequest {
+  wedding_date: string;
+  venue_name: string;
+  venue_address: string;
+  expected_guests: number;
+}
+
+export interface WeddingCreateResponse extends Wedding {
+  staff_pin: string;
+}
+
+export interface WeddingUpdateRequest {
+  wedding_date?: string;
+  venue_name?: string;
+  venue_address?: string;
+  expected_guests?: number;
+}
+
+export interface Guest {
+  id: number;
+  wedding_id: number;
+  name: string;
+  email?: string;
+  phone?: string;
+  qr_code: string;
+  unique_code?: string;
+  table_number?: number;
+  dietary_restrictions?: string;
+  created_at: string;
+  is_checked_in: boolean;
+  checked_in_at?: string;
+  rsvp_status?: 'pending' | 'accepted' | 'declined';
+  rsvp_message?: string;
+  rsvp_responded_at?: string;
+  invitation_sent_at?: string;
+}
+
+export interface GuestCreateRequest {
+  name: string;
+  email?: string;
+  phone?: string;
+  table_number?: number;
+  dietary_restrictions?: string;
+}
+
+export interface GuestUpdateRequest {
+  name?: string;
+  email?: string;
+  phone?: string;
+  table_number?: number;
+  dietary_restrictions?: string;
+}
+
+export interface BulkGuestImportRequest {
+  guests: GuestCreateRequest[];
+}
+
+export interface BulkGuestImportResponse {
+  total_guests: number;
+  successful_imports: number;
+  failed_imports: number;
+  errors: string[];
+  imported_guests: Guest[];
+}
+
+// Budget types
+export interface BudgetCategoryCreateRequest {
+  category: string;
+  allocated_amount: number;
+}
+
+export interface BudgetCategoryUpdateRequest {
+  category?: string;
+  allocated_amount?: number;
+}
+
+export interface BudgetCategoryResponse {
+  id: number;
+  category: string;
+  allocated_amount: number;
+  spent_amount: number;
+  remaining_amount: number;
+  percentage_spent: number;
+}
+
+export interface BudgetCreateRequest {
+  total_budget: number;
+  currency?: string;
+  categories: BudgetCategoryCreateRequest[];
+}
+
+export interface BudgetUpdateRequest {
+  total_budget?: number;
+  currency?: string;
+}
+
+export interface BudgetResponse {
+  id: number;
+  wedding_id: number;
+  total_budget: number;
+  currency: string;
+  total_spent: number;
+  total_remaining: number;
+  percentage_spent: number;
+  categories: BudgetCategoryResponse[];
+  created_at: string;
+}
+
+export interface ExpenseCreateRequest {
+  budget_category_id: number;
+  vendor_id?: number;
+  description: string;
+  amount: number;
+  date: string;
+  receipt_url?: string;
+}
+
+export interface ExpenseUpdateRequest {
+  description?: string;
+  amount?: number;
+  date?: string;
+  receipt_url?: string;
+}
+
+export interface ExpenseResponse {
+  id: number;
+  budget_category_id: number;
+  vendor_id?: number;
+  vendor_name?: string;
+  description: string;
+  amount: number;
+  date: string;
+  receipt_url?: string;
+  created_at: string;
+}
+
+export interface BudgetWarning {
+  category: string;
+  allocated_amount: number;
+  spent_amount: number;
+  percentage_spent: number;
+  warning_level: 'approaching' | 'exceeded';
+  message: string;
+}
+
+export interface BudgetSummary {
+  total_budget: number;
+  total_spent: number;
+  total_remaining: number;
+  percentage_spent: number;
+  currency: string;
+  warnings: BudgetWarning[];
+  categories_count: number;
+  expenses_count: number;
+}
+
+// Vendor API functions
+export const vendorApi = {
+  // Search vendors
+  searchVendors: (params: VendorSearchParams) => {
+    const searchParams = new URLSearchParams();
+    if (params.category) searchParams.append('category', params.category);
+    if (params.location) searchParams.append('location', params.location);
+    if (params.search) searchParams.append('search', params.search);
+    if (params.min_rating) searchParams.append('min_rating', params.min_rating.toString());
+    if (params.verified_only !== undefined) searchParams.append('verified_only', params.verified_only.toString());
+    searchParams.append('offset', (params.skip || 0).toString());
+    searchParams.append('limit', (params.limit || 20).toString());
+    
+    return apiClient.get<VendorSearchResponse>(`/api/v1/vendors?${searchParams.toString()}`);
+  },
+
+  // Get vendor categories
+  getCategories: () =>
+    apiClient.get<VendorCategoryResponse[]>('/api/v1/vendors/categories'),
+
+  // Get vendor by ID
+  getVendor: (vendorId: number) =>
+    apiClient.get<VendorResponse>(`/api/v1/vendors/${vendorId}`),
+
+  // Contact vendor (create lead)
+  contactVendor: (vendorId: number, data: LeadCreateRequest) =>
+    apiClient.post<LeadResponse>(`/api/v1/vendors/${vendorId}/contact`, data),
+
+  // Get vendor reviews
+  getVendorReviews: (vendorId: number, params: ReviewsParams) => {
+    const searchParams = new URLSearchParams();
+    if (params.verified_only !== undefined) searchParams.append('verified_only', params.verified_only.toString());
+    searchParams.append('skip', params.skip.toString());
+    searchParams.append('limit', params.limit.toString());
+    
+    return apiClient.get<ReviewsResponse>(`/api/v1/vendors/${vendorId}/reviews?${searchParams.toString()}`);
+  },
+
+  // Get vendor rating breakdown
+  getRatingBreakdown: (vendorId: number) =>
+    apiClient.get<RatingBreakdownResponse>(`/api/v1/vendors/${vendorId}/rating-breakdown`),
+
+  // Check review eligibility
+  checkReviewEligibility: (vendorId: number) =>
+    apiClient.get<ReviewEligibilityResponse>(`/api/v1/vendors/${vendorId}/review-eligibility`),
+
+  // Create review
+  createReview: (vendorId: number, data: ReviewCreateRequest) =>
+    apiClient.post<ReviewResponse>(`/api/v1/vendors/${vendorId}/reviews`, data),
+
+  // Vendor profile management
+  getMyProfile: () =>
+    apiClient.get<VendorResponse>('/api/v1/vendors/profile'),
+
+  createProfile: (data: VendorProfileCreateRequest) =>
+    apiClient.post<VendorResponse>('/api/v1/vendors/profile', data),
+
+  updateProfile: (data: VendorProfileUpdateRequest) =>
+    apiClient.put<VendorResponse>('/api/v1/vendors/profile', data),
+
+  // Lead management
+  getMyLeads: (params: VendorLeadsParams) => {
+    const searchParams = new URLSearchParams();
+    if (params.status) searchParams.append('status', params.status);
+    searchParams.append('skip', params.skip.toString());
+    searchParams.append('limit', params.limit.toString());
+    
+    return apiClient.get<LeadResponse[]>(`/api/v1/vendors/profile/leads?${searchParams.toString()}`);
+  },
+
+  updateLeadStatus: (leadId: number, data: LeadStatusUpdateRequest) =>
+    apiClient.put<LeadResponse>(`/api/v1/vendors/profile/leads/${leadId}`, data),
+
+  getLeadStats: () =>
+    apiClient.get<VendorLeadStatsResponse>('/api/v1/vendors/profile/leads/stats'),
+
+  // Phone verification
+  sendPhoneVerificationOTP: async (phone: string): Promise<{ success: boolean; message: string; expiresAt?: string; warning?: string }> => {
+    return apiClient.post<{ success: boolean; message: string; expiresAt?: string; warning?: string }>('/api/v1/vendors/verify-phone/send', { phone });
+  },
+
+  verifyPhoneOTP: async (phone: string, code: string): Promise<{ success: boolean; verified: boolean; message: string }> => {
+    return apiClient.post<{ success: boolean; verified: boolean; message: string }>('/api/v1/vendors/verify-phone/verify', { phone, code });
+  },
+};
+
+// Staff Check-In types
+export interface StaffVerificationRequest {
+  wedding_code: string;
+  staff_pin: string;
+}
+
+export interface StaffSessionResponse {
+  session_token: string;
+  wedding_id: number;
+  expires_in: number;
+}
+
+export interface CheckInResponse {
+  success: boolean;
+  message: string;
+  guest_name: string;
+  checked_in_at: string;
+  is_duplicate: boolean;
+}
+
+export interface CheckInStatsResponse {
+  total_guests: number;
+  checked_in_count: number;
+  pending_count: number;
+  checkin_rate: number;
+  recent_checkins: Array<{
+    guest_name: string;
+    checked_in_at: string;
+    method: string;
+  }>;
+}
+
+export interface GuestStatusResponse {
+  id: number;
+  name: string;
+  table_number?: number;
+  is_checked_in: boolean;
+  checked_in_at?: string;
+  qr_code: string;
+}
+
+// Vendor types
+export interface VendorResponse {
+  id: number;
+  business_name: string;
+  category: VendorCategory;
+  location: string;
+  description: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  street_address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  years_in_business?: number;
+  team_size?: number;
+  service_area?: string;
+  business_photos?: string[];
+  portfolio_photos?: string[];
+  service_packages?: ServicePackage[];
+  business_hours?: BusinessHours[];
+  is_verified: boolean;
+  rating?: number;
+  created_at: string;
+}
+
+export interface ServicePackage {
+  id?: number;
+  name: string;
+  description: string;
+  price: number;
+  duration?: string;
+  features?: string[];
+}
+
+export interface BusinessHours {
+  day: string;
+  open: string;
+  close: string;
+  closed: boolean;
+}
+
+export interface VendorSearchParams {
+  category?: VendorCategory;
+  location?: string;
+  search?: string;
+  min_rating?: number;
+  verified_only?: boolean;
+  skip: number;
+  limit: number;
+}
+
+export interface VendorSearchResponse {
+  vendors: VendorResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface VendorCategoryResponse {
+  value: string;
+  label: string;
+}
+
+export interface LeadCreateRequest {
+  message: string;
+  budget_range?: string;
+  event_date?: string;
+}
+
+export interface LeadResponse {
+  id: number;
+  vendor_id: number;
+  couple_id: number;
+  message: string;
+  budget_range?: string;
+  event_date?: string;
+  status: LeadStatus;
+  created_at: string;
+}
+
+export interface ReviewCreateRequest {
+  rating: number;
+  comment: string;
+}
+
+export interface ReviewResponse {
+  id: number;
+  vendor_id: number;
+  couple_id: number;
+  rating: number;
+  comment: string;
+  is_verified: boolean;
+  created_at: string;
+}
+
+export interface ReviewsParams {
+  verified_only?: boolean;
+  skip: number;
+  limit: number;
+}
+
+export interface ReviewsResponse {
+  reviews: ReviewResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+  average_rating?: number;
+}
+
+export interface RatingBreakdownResponse {
+  total_reviews: number;
+  average_rating?: number;
+  rating_distribution: Record<number, number>;
+  recent_reviews: Array<{
+    id: number;
+    rating: number;
+    comment: string;
+    created_at: string;
+  }>;
+}
+
+export interface ReviewEligibilityResponse {
+  can_review: boolean;
+  has_booking: boolean;
+  already_reviewed: boolean;
+  reason: string;
+}
+
+export type VendorCategory = 
+  | 'venue'
+  | 'catering'
+  | 'photography'
+  | 'videography'
+  | 'music'
+  | 'flowers'
+  | 'decoration'
+  | 'transportation'
+  | 'makeup'
+  | 'dress'
+  | 'jewelry'
+  | 'invitations'
+  | 'other';
+
+export type LeadStatus = 'new' | 'contacted' | 'converted' | 'closed';
+
+// Additional vendor types
+export interface VendorProfileCreateRequest {
+  business_name: string;
+  category: VendorCategory;
+  location: string;
+  description: string;
+  phone?: string;
+  website?: string;
+  street_address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  years_in_business?: number;
+  team_size?: number;
+  service_area?: string;
+  business_photos?: string[];
+  portfolio_photos?: string[];
+  service_packages?: ServicePackage[];
+  business_hours?: BusinessHours[];
+}
+
+export interface VendorProfileUpdateRequest {
+  business_name?: string;
+  category?: VendorCategory;
+  location?: string;
+  description?: string;
+  phone?: string;
+  website?: string;
+  street_address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  years_in_business?: number;
+  team_size?: number;
+  service_area?: string;
+  business_photos?: string[];
+  portfolio_photos?: string[];
+  service_packages?: ServicePackage[];
+  business_hours?: BusinessHours[];
+}
+
+export interface VendorLeadsParams {
+  status?: LeadStatus;
+  skip: number;
+  limit: number;
+}
+
+export interface LeadStatusUpdateRequest {
+  status: LeadStatus;
+}
+
+export interface VendorLeadStatsResponse {
+  total_leads: number;
+  conversion_rate: number;
+  by_status: Record<string, number>;
+  recent_leads: number;
+}
+
+export interface LeadWithCoupleInfo extends LeadResponse {
+  couple_name: string;
+  couple_email: string;
+}
+
+// Admin API functions
+export const adminApi = {
+  // Vendor Application Management
+  getVendorApplications: (skip = 0, limit = 20) =>
+    apiClient.get<VendorApplicationsResponse>(`/api/admin/vendor-applications?skip=${skip}&limit=${limit}`),
+
+  getVendorApplication: (applicationId: number) =>
+    apiClient.get<VendorApplicationResponse>(`/api/admin/vendor-applications/${applicationId}`),
+
+  approveVendorApplication: (applicationId: number, notes?: string) =>
+    apiClient.post<VendorApplicationResponse>(`/api/admin/vendor-applications/${applicationId}/approve`, {
+      notes
+    }),
+
+  rejectVendorApplication: (applicationId: number, rejectionReason: string, notes?: string) =>
+    apiClient.post<VendorApplicationResponse>(`/api/admin/vendor-applications/${applicationId}/reject`, {
+      rejection_reason: rejectionReason,
+      notes
+    }),
+
+  // Vendor Subscription Management
+  getVendorSubscriptions: (tier?: VendorSubscriptionTier, skip = 0, limit = 20) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (tier) params.append('tier', tier);
+    return apiClient.get<VendorSubscriptionsResponse>(`/api/admin/vendor-subscriptions?${params}`);
+  },
+
+  getVendorSubscription: (vendorId: number) =>
+    apiClient.get<VendorSubscriptionResponse>(`/api/admin/vendors/${vendorId}/subscription`),
+
+  updateVendorSubscription: (vendorId: number, tier: VendorSubscriptionTier, expiresAt?: string) =>
+    apiClient.put<VendorSubscriptionResponse>(`/api/admin/vendors/${vendorId}/subscription`, {
+      tier,
+      expires_at: expiresAt
+    }),
+
+  // Content Moderation
+  getFlaggedReviews: (skip = 0, limit = 20) =>
+    apiClient.get<FlaggedReviewsResponse>(`/api/admin/reviews/flagged?skip=${skip}&limit=${limit}`),
+
+  moderateReview: (reviewId: number, action: 'approve' | 'reject' | 'hide', reason?: string) =>
+    apiClient.post<ReviewModerationResponse>(`/api/admin/reviews/${reviewId}/moderate`, {
+      action,
+      reason
+    }),
+
+  // Platform Analytics
+  getPlatformAnalytics: () =>
+    apiClient.get<PlatformAnalyticsResponse>('/api/admin/analytics'),
+
+  getAuditLogs: (filters: AuditLogFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.actionType) params.append('action_type', filters.actionType);
+    if (filters.targetType) params.append('target_type', filters.targetType);
+    if (filters.adminUserId) params.append('admin_user_id', filters.adminUserId.toString());
+    params.append('skip', (filters.skip || 0).toString());
+    params.append('limit', (filters.limit || 50).toString());
+    
+    return apiClient.get<AuditLogsResponse>(`/api/admin/audit-logs?${params}`);
+  },
+
+  recordPlatformMetrics: () =>
+    apiClient.post<PlatformMetricsResponse>('/api/v1/admin/metrics/record')
+};
+
+// Admin types
+export type VendorApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected';
+export type VendorSubscriptionTier = 'free' | 'basic' | 'premium' | 'enterprise';
+export type AdminActionType = 
+  | 'vendor_approval' 
+  | 'vendor_rejection' 
+  | 'review_moderation' 
+  | 'user_suspension' 
+  | 'user_activation' 
+  | 'subscription_change' 
+  | 'content_moderation';
+
+export interface VendorApplicationResponse {
+  id: number;
+  vendor_id: number;
+  status: VendorApplicationStatus;
+  submitted_at: string;
+  reviewed_at?: string;
+  reviewed_by?: number;
+  rejection_reason?: string;
+  notes?: string;
+  business_name: string;
+  category: string;
+  location: string;
+  description: string;
+  vendor_email: string;
+}
+
+export interface VendorApplicationsResponse {
+  applications: VendorApplicationResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface VendorSubscriptionResponse {
+  id: number;
+  vendor_id: number;
+  tier: VendorSubscriptionTier;
+  started_at: string;
+  expires_at?: string;
+  is_active: boolean;
+  business_name: string;
+  vendor_email: string;
+}
+
+export interface VendorSubscriptionsResponse {
+  subscriptions: VendorSubscriptionResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface FlaggedReviewResponse {
+  id: number;
+  vendor_id: number;
+  couple_id: number;
+  rating: number;
+  comment: string;
+  is_flagged: boolean;
+  is_hidden: boolean;
+  created_at: string;
+  vendor_name: string;
+  couple_name: string;
+}
+
+export interface FlaggedReviewsResponse {
+  reviews: FlaggedReviewResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface ReviewModerationResponse {
+  id: number;
+  status: string;
+  action: string;
+  is_hidden: boolean;
+  is_flagged: boolean;
+}
+
+export interface PlatformAnalyticsResponse {
+  overview: {
+    total_users: number;
+    total_couples: number;
+    total_vendors: number;
+    total_weddings: number;
+    total_checkins: number;
+    total_reviews: number;
+    total_leads: number;
+    active_users_30d: number;
+  };
+  pending_actions: {
+    pending_applications: number;
+    flagged_reviews: number;
+  };
+  subscription_distribution: Record<string, number>;
+}
+
+export interface AuditLogResponse {
+  id: number;
+  admin_user_id: number;
+  action_type: AdminActionType;
+  target_type: string;
+  target_id: number;
+  description: string;
+  action_metadata?: string;
+  created_at: string;
+  admin_email: string;
+}
+
+export interface AuditLogsResponse {
+  logs: AuditLogResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface AuditLogFilters {
+  actionType?: AdminActionType;
+  targetType?: string;
+  adminUserId?: number;
+  skip?: number;
+  limit?: number;
+}
+
+export interface PlatformMetricsResponse {
+  id: number;
+  date: string;
+  total_users: number;
+  total_couples: number;
+  total_vendors: number;
+  total_weddings: number;
+  total_checkins: number;
+  total_reviews: number;
+  total_leads: number;
+  active_users_30d: number;
+  created_at: string;
+}
+
+// Communication API functions (SMS with AfroMessage)
+export const communicationApi = {
+  // Send QR code invitations via SMS
+  sendQRInvitations: (data: QRInvitationRequest) =>
+    apiClient.post<BulkMessageResponse>('/api/v1/communication/send-qr-invitations', data),
+
+  // Send event update via SMS
+  sendEventUpdate: (data: EventUpdateRequest) =>
+    apiClient.post<BulkMessageResponse>('/api/v1/communication/send-event-update', data),
+
+  // Send bulk messages via SMS
+  sendBulkMessages: (data: BulkMessageRequest) =>
+    apiClient.post<BulkMessageResponse>('/api/v1/communication/send-bulk-messages', data),
+
+  // Get message templates
+  getMessageTemplates: () =>
+    apiClient.get<MessageTemplatesResponse>('/api/v1/communication/message-templates'),
+
+  // Send security code (OTP) via SMS
+  sendSecurityCode: (data: SecurityCodeRequest) =>
+    apiClient.post<SecurityCodeResponse>('/api/v1/communication/send-security-code', data),
+
+  // Verify security code
+  verifySecurityCode: (data: VerifySecurityCodeRequest) =>
+    apiClient.post<VerifySecurityCodeResponse>('/api/v1/communication/verify-security-code', data),
+};
+
+// Communication types for SMS functionality
+export interface QRInvitationRequest {
+  guest_ids: number[];
+  custom_message?: string;
+}
+
+export interface EventUpdateRequest {
+  guest_ids: number[];
+  update_message: string;
+}
+
+export interface BulkMessageRequest {
+  recipients: Array<{
+    phone: string;
+    message: string;
+  }>;
+}
+
+export interface MessageResponse {
+  guest_id?: number;
+  phone: string;
+  status: string;
+  method: string;
+  message_id?: string;
+  error?: string;
+  timestamp: string;
+}
+
+export interface BulkMessageResponse {
+  total_sent: number;
+  successful: number;
+  failed: number;
+  results: MessageResponse[];
+}
+
+export interface MessageTemplate {
+  type: string;
+  description: string;
+  variables: string[];
+}
+
+export interface MessageTemplatesResponse {
+  templates: Record<string, MessageTemplate>;
+}
+
+export interface SecurityCodeRequest {
+  phone: string;
+  length?: number;
+  type?: number; // 0=numeric, 1=alphabetic, 2=alphanumeric
+  ttl?: number; // time to live in seconds
+}
+
+export interface SecurityCodeResponse {
+  success: boolean;
+  phone: string;
+  verification_id: string;
+  message: string;
+}
+
+export interface VerifySecurityCodeRequest {
+  phone?: string;
+  code: string;
+  verification_id?: string;
+  use_afromessage_api?: boolean; // Option to use AfroMessage API for verification
+}
+
+export interface VerifySecurityCodeResponse {
+  success: boolean;
+  verified: boolean;
+  message: string;
+}
+
+// Invitation API functions
+export const invitationApi = {
+  // Get all available templates
+  getTemplates: () =>
+    apiClient.get<InvitationTemplate[]>('/api/invitations/templates'),
+
+  // Get wedding invitation settings
+  getWeddingSettings: (weddingId: number) =>
+    apiClient.get<WeddingInvitationSettings>(`/api/invitations/wedding/${weddingId}`),
+
+  // Update wedding invitation settings
+  updateWeddingSettings: (weddingId: number, data: WeddingInvitationSettingsUpdate) =>
+    apiClient.put<{ success: boolean; message: string }>(`/api/invitations/wedding/${weddingId}`, data),
+
+  // Get invitation data (public endpoint)
+  getInvitationData: (weddingCode: string, guestCode: string) =>
+    fetch(`${API_BASE_URL}/api/invitations/${weddingCode}/${guestCode}`)
+      .then(res => res.ok ? res.json() : Promise.reject(res)),
+
+  // Send invitation via SMS
+  sendSMS: (weddingId: number, guestId: number) =>
+    apiClient.post<{ success: boolean; message: string; url: string }>('/api/invitations/send-sms', {
+      wedding_id: weddingId,
+      guest_id: guestId
+    }),
+
+  // Send bulk invitations via SMS
+  sendBulkSMS: (weddingId: number, guestIds: number[]) =>
+    apiClient.post<BulkSMSResponse>('/api/invitations/send-bulk-sms', {
+      wedding_id: weddingId,
+      guest_ids: guestIds
+    }),
+
+  // Get invitation link
+  getInvitationLink: (weddingId: number, guestId: number) =>
+    apiClient.get<{ url: string }>(`/api/invitations/link/${weddingId}/${guestId}`)
+};
+
+// RSVP API functions
+export const rsvpApi = {
+  // Submit RSVP (public endpoint)
+  submitRSVP: (weddingCode: string, guestCode: string, status: 'accepted' | 'declined', message?: string) =>
+    fetch(`${API_BASE_URL}/api/rsvp/${weddingCode}/${guestCode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, message })
+    }).then(res => res.ok ? res.json() : Promise.reject(res)),
+
+  // Update RSVP (public endpoint)
+  updateRSVP: (weddingCode: string, guestCode: string, status: 'accepted' | 'declined', message?: string) =>
+    fetch(`${API_BASE_URL}/api/rsvp/${weddingCode}/${guestCode}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, message })
+    }).then(res => res.ok ? res.json() : Promise.reject(res)),
+
+  // Get RSVP status (public endpoint)
+  getRSVPStatus: (weddingCode: string, guestCode: string) =>
+    fetch(`${API_BASE_URL}/api/rsvp/${weddingCode}/${guestCode}`)
+      .then(res => res.ok ? res.json() : Promise.reject(res)),
+
+  // Trigger cache invalidation (public endpoint)
+  invalidateCache: (weddingId: number) =>
+    fetch(`${API_BASE_URL}/api/rsvp/invalidate-cache/${weddingId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).then(res => res.ok ? res.json() : Promise.reject(res)),
+
+  // Get RSVP analytics (authenticated)
+  getAnalytics: (weddingId: number) =>
+    apiClient.get<RSVPAnalytics>(`/api/v1/analytics/rsvp/${weddingId}`)
+};
+
+// Invitation & RSVP Types
+export interface InvitationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string;
+  backgroundUrl: string;
+  defaultConfig: {
+    textColor: string;
+    fontSize: 'small' | 'medium' | 'large';
+    textPosition: 'top' | 'center' | 'bottom';
+    qrPosition: 'bottom-left' | 'bottom-center' | 'bottom-right';
+  };
+}
+
+export interface InvitationCustomization {
+  wedding_title: string;
+  ceremony_date: string;
+  ceremony_time: string;
+  venue_name: string;
+  venue_address: string;
+  custom_message: string;
+  text_color: string;
+  font_size: 'small' | 'medium' | 'large';
+  text_position: 'top' | 'center' | 'bottom';
+  text_y_position?: number; // Percentage from top (0-100)
+  qr_position: 'bottom-left' | 'bottom-center' | 'bottom-right';
+}
+
+export interface WeddingInvitationSettings {
+  template_id?: string;
+  customization?: InvitationCustomization;
+}
+
+export interface WeddingInvitationSettingsUpdate {
+  template_id?: string;
+  customization?: InvitationCustomization;
+}
+
+export interface InvitationData {
+  guest: {
+    id: number;
+    name: string;
+    qr_code: string;
+    rsvp_status: 'pending' | 'accepted' | 'declined';
+    rsvp_message?: string;
+    rsvp_responded_at?: string;
+  };
+  wedding: {
+    id: number;
+    wedding_code: string;
+    wedding_date: string;
+    venue_name: string;
+    venue_address: string;
+    template_id?: string;
+    customization?: InvitationCustomization;
+  };
+}
+
+export interface BulkSMSResponse {
+  success: boolean;
+  total_sent: number;
+  total_failed: number;
+  results: Array<{
+    guest_id: number;
+    guest_name: string;
+    success: boolean;
+    error?: string;
+  }>;
+}
+
+// Invitation types
+export interface InvitationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string;
+  backgroundUrl: string;
+  defaultConfig: {
+    textColor: string;
+    fontSize: 'small' | 'medium' | 'large';
+    textPosition: 'top' | 'center' | 'bottom';
+    qrPosition: 'bottom-left' | 'bottom-center' | 'bottom-right';
+  };
+}
+
+export interface RSVPAnalytics {
+  total_invited: number;
+  total_accepted: number;
+  total_declined: number;
+  total_pending: number;
+  total_sent: number;
+  response_rate: number;
+  average_response_time: number;
+  sms_success_rate: number;
+  timeline: Array<{
+    date: string;
+    accepted: number;
+    declined: number;
+  }>;
+  recent_responses: Array<{
+    guest_name: string;
+    status: 'accepted' | 'declined';
+    message?: string;
+    responded_at: string;
+  }>;
+}

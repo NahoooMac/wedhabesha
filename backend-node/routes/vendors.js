@@ -1,0 +1,683 @@
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { query } = require('../config/database');
+const { optionalAuth, authenticateToken } = require('../middleware/auth');
+const otpService = require('../services/otpService');
+const smsService = require('../services/smsService');
+const notificationService = require('../services/notificationService');
+
+const router = express.Router();
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, '..', 'uploads', 'vendors');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'vendor-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  // Accept images only
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed!'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
+
+// Upload vendor photos endpoint
+router.post('/upload-photos', authenticateToken, upload.array('photos', 10), async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can upload photos'
+      });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'No files uploaded'
+      });
+    }
+
+    // Generate URLs for uploaded files
+    const photoUrls = req.files.map(file => {
+      return `/uploads/vendors/${file.filename}`;
+    });
+
+    res.json({
+      success: true,
+      photos: photoUrls,
+      message: `${photoUrls.length} photo(s) uploaded successfully`
+    });
+
+  } catch (error) {
+    console.error('Upload photos error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to upload photos'
+    });
+  }
+});
+
+// Get vendors (public endpoint with optional auth)
+router.get('/', optionalAuth, async (req, res) => {
+  try {
+    const { category, location, search, verified_only, limit = 20, offset = 0 } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const queryParams = [];
+
+    // Handle verification filter
+    if (verified_only === 'true') {
+      whereClause += ` AND v.is_verified = 1`;
+    } else if (verified_only === 'false') {
+      whereClause += ` AND v.is_verified = 0`;
+    }
+    // If verified_only is not specified, show all vendors
+
+    if (category) {
+      whereClause += ` AND v.category = ?`;
+      queryParams.push(category);
+    }
+
+    if (location) {
+      whereClause += ` AND v.location LIKE ?`;
+      queryParams.push(`%${location}%`);
+    }
+
+    if (search) {
+      whereClause += ` AND (v.business_name LIKE ? OR v.description LIKE ?)`;
+      queryParams.push(`%${search}%`);
+      queryParams.push(`%${search}%`);
+    }
+
+    queryParams.push(parseInt(limit));
+    queryParams.push(parseInt(offset));
+
+    const vendorsResult = await query(`
+      SELECT v.id, v.business_name, v.category, v.location, v.description, 
+             v.is_verified, v.rating, v.created_at
+      FROM vendors v
+      ${whereClause}
+      ORDER BY v.rating DESC, v.created_at DESC
+      LIMIT ? OFFSET ?
+    `, queryParams);
+
+    // Add default values for each vendor
+    const vendors = vendorsResult.rows.map(vendor => {
+      vendor.business_photos = [];
+      vendor.portfolio_photos = [];
+      return vendor;
+    });
+
+    res.json({
+      vendors: vendors,
+      total: vendors.length,
+      limit: parseInt(limit),
+      skip: parseInt(offset),
+      has_more: vendorsResult.rows.length === parseInt(limit)
+    });
+
+  } catch (error) {
+    console.error('Get vendors error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get vendors'
+    });
+  }
+});
+
+// Get vendor categories
+router.get('/categories', (req, res) => {
+  const categories = [
+    { value: 'venue', label: 'Venue' },
+    { value: 'catering', label: 'Catering' },
+    { value: 'photography', label: 'Photography' },
+    { value: 'videography', label: 'Videography' },
+    { value: 'music', label: 'Music & DJ' },
+    { value: 'flowers', label: 'Flowers & Decoration' },
+    { value: 'transportation', label: 'Transportation' },
+    { value: 'makeup', label: 'Makeup & Beauty' },
+    { value: 'dress', label: 'Wedding Dress' },
+    { value: 'jewelry', label: 'Jewelry' },
+    { value: 'invitations', label: 'Invitations' },
+    { value: 'other', label: 'Other Services' }
+  ];
+
+  res.json(categories);
+});
+
+// Get vendor profile (authenticated)
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const vendorResult = await query(`
+      SELECT v.id, v.business_name, v.category, v.location, v.description, 
+             v.is_verified, v.rating, v.created_at, u.email,
+             v.phone, v.verification_status
+      FROM vendors v
+      JOIN users u ON v.user_id = u.id
+      WHERE v.user_id = ?
+    `, [req.user.id]);
+
+    if (vendorResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Vendor profile not found'
+      });
+    }
+
+    const vendor = vendorResult.rows[0];
+    
+    // Add default values for fields that don't exist in the database yet
+    vendor.website = null;
+    vendor.street_address = null;
+    vendor.city = null;
+    vendor.state = null;
+    vendor.postal_code = null;
+    vendor.country = 'Ethiopia';
+    vendor.years_in_business = 0;
+    vendor.team_size = 1;
+    vendor.service_area = null;
+    vendor.business_photos = [];
+    vendor.portfolio_photos = [];
+    vendor.service_packages = [];
+    vendor.business_hours = [];
+    vendor.phone_verified = false;
+    vendor.verified_phone = null;
+    vendor.working_hours = [];
+    vendor.additional_info = null;
+    vendor.verification_date = null;
+    vendor.verification_history = [];
+    vendor.latitude = null;
+    vendor.longitude = null;
+    vendor.map_address = null;
+
+    res.json(vendor);
+
+  } catch (error) {
+    console.error('Get vendor profile error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get vendor profile'
+    });
+  }
+});
+
+// Create vendor profile (authenticated)
+router.post('/profile', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const { 
+      business_name, 
+      category, 
+      location, 
+      description,
+      phone,
+      website,
+      street_address,
+      city,
+      state,
+      postal_code,
+      country,
+      years_in_business,
+      team_size,
+      service_area,
+      business_photos,
+      portfolio_photos,
+      service_packages,
+      business_hours,
+      working_hours,
+      additional_info,
+      latitude,
+      longitude,
+      map_address
+    } = req.body;
+
+    // Validate required fields
+    if (!business_name || !category || !location || !description) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Missing required fields: business_name, category, location, description'
+      });
+    }
+
+    // Check if profile already exists
+    const existingVendor = await query(`
+      SELECT id FROM vendors WHERE user_id = ?
+    `, [req.user.id]);
+
+    if (existingVendor.rows.length > 0) {
+      return res.status(409).json({
+        error: 'Conflict',
+        message: 'Vendor profile already exists'
+      });
+    }
+
+    // Create vendor profile
+    await query(`
+      INSERT INTO vendors (
+        user_id, business_name, category, location, description, 
+        phone, is_verified, rating, verification_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 'pending')
+    `, [
+      req.user.id, business_name, category, location, description,
+      phone || null
+    ]);
+
+    // Get the created vendor ID
+    const createdVendorResult = await query(`
+      SELECT id FROM vendors WHERE user_id = ?
+    `, [req.user.id]);
+    
+    const vendorId = createdVendorResult.rows[0].id;
+
+    // Create vendor application for admin review
+    await query(`
+      INSERT INTO vendor_applications (vendor_id, status, submitted_at)
+      VALUES (?, 'pending', datetime('now'))
+    `, [vendorId]);
+
+    // Get the created vendor
+    const vendorResult = await query(`
+      SELECT v.id, v.business_name, v.category, v.location, v.description, 
+             v.is_verified, v.rating, v.created_at, u.email,
+             v.phone, v.verification_status
+      FROM vendors v
+      JOIN users u ON v.user_id = u.id
+      WHERE v.user_id = ?
+    `, [req.user.id]);
+
+    const vendor = vendorResult.rows[0];
+    
+    // Add default values for fields that don't exist in the database yet
+    vendor.website = null;
+    vendor.street_address = null;
+    vendor.city = null;
+    vendor.state = null;
+    vendor.postal_code = null;
+    vendor.country = 'Ethiopia';
+    vendor.years_in_business = 0;
+    vendor.team_size = 1;
+    vendor.service_area = null;
+    vendor.business_photos = [];
+    vendor.portfolio_photos = [];
+    vendor.service_packages = [];
+    vendor.business_hours = [];
+    vendor.phone_verified = false;
+    vendor.verified_phone = null;
+    vendor.working_hours = [];
+    vendor.additional_info = null;
+    vendor.verification_date = null;
+    vendor.verification_history = [];
+    vendor.latitude = null;
+    vendor.longitude = null;
+    vendor.map_address = null;
+
+    res.status(201).json(vendor);
+
+  } catch (error) {
+    console.error('Create vendor profile error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to create vendor profile'
+    });
+  }
+});
+
+// Update vendor profile (authenticated)
+router.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const { 
+      business_name, 
+      category, 
+      location, 
+      description,
+      phone,
+      website,
+      street_address,
+      city,
+      state,
+      postal_code,
+      country,
+      years_in_business,
+      team_size,
+      service_area,
+      business_photos,
+      portfolio_photos,
+      service_packages,
+      business_hours,
+      working_hours,
+      additional_info,
+      latitude,
+      longitude,
+      map_address
+    } = req.body;
+
+    // Validate required fields
+    if (!business_name || !category || !location || !description) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Missing required fields: business_name, category, location, description'
+      });
+    }
+
+    // Update vendor profile
+    await query(`
+      UPDATE vendors 
+      SET business_name = ?, category = ?, location = ?, description = ?, phone = ?
+      WHERE user_id = ?
+    `, [
+      business_name, category, location, description, phone || null, req.user.id
+    ]);
+
+    // Get the updated vendor
+    const vendorResult = await query(`
+      SELECT v.id, v.business_name, v.category, v.location, v.description, 
+             v.is_verified, v.rating, v.created_at, u.email,
+             v.phone, v.verification_status
+      FROM vendors v
+      JOIN users u ON v.user_id = u.id
+      WHERE v.user_id = ?
+    `, [req.user.id]);
+
+    if (vendorResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Vendor profile not found'
+      });
+    }
+
+    const vendor = vendorResult.rows[0];
+    
+    // Add default values for fields that don't exist in the database yet
+    vendor.website = null;
+    vendor.street_address = null;
+    vendor.city = null;
+    vendor.state = null;
+    vendor.postal_code = null;
+    vendor.country = 'Ethiopia';
+    vendor.years_in_business = 0;
+    vendor.team_size = 1;
+    vendor.service_area = null;
+    vendor.business_photos = [];
+    vendor.portfolio_photos = [];
+    vendor.service_packages = [];
+    vendor.business_hours = [];
+    vendor.phone_verified = false;
+    vendor.verified_phone = null;
+    vendor.working_hours = [];
+    vendor.additional_info = null;
+    vendor.verification_date = null;
+    vendor.verification_history = [];
+    vendor.latitude = null;
+    vendor.longitude = null;
+    vendor.map_address = null;
+
+    res.json(vendor);
+
+  } catch (error) {
+    console.error('Update vendor profile error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to update vendor profile'
+    });
+  }
+});
+
+// Send phone verification OTP
+router.post('/verify-phone/send', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Phone number is required'
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Store OTP in database
+    const storeResult = await otpService.storeOTP(phone, otpCode, 300); // 5 minutes TTL
+    
+    if (!storeResult.success) {
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: 'Failed to generate verification code'
+      });
+    }
+
+    // Send SMS
+    const message = `Your WedHabesha verification code is: ${otpCode}. This code expires in 5 minutes.`;
+    
+    try {
+      await smsService.sendSMS(phone, message);
+      
+      res.json({
+        success: true,
+        message: 'Verification code sent successfully',
+        expiresAt: storeResult.expiresAt
+      });
+    } catch (smsError) {
+      console.error('SMS sending failed:', smsError);
+      
+      // Still return success since OTP was stored, but mention SMS issue
+      res.json({
+        success: true,
+        message: 'Verification code generated. If SMS delivery fails, please try again.',
+        expiresAt: storeResult.expiresAt,
+        warning: 'SMS delivery may be delayed'
+      });
+    }
+
+  } catch (error) {
+    console.error('Send phone verification error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to send verification code'
+    });
+  }
+});
+
+// Verify phone OTP
+router.post('/verify-phone/verify', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const { phone, code } = req.body;
+
+    if (!phone || !code) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Phone number and verification code are required'
+      });
+    }
+
+    // Verify OTP
+    const verifyResult = await otpService.verifyOTP(phone, code);
+    
+    if (!verifyResult.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: verifyResult.error || 'Invalid verification code'
+      });
+    }
+
+    // Update vendor phone verification status
+    await query(`
+      UPDATE vendors 
+      SET phone_verified = 1, verified_phone = ?
+      WHERE user_id = ?
+    `, [phone, req.user.id]);
+
+    res.json({
+      success: true,
+      verified: true,
+      message: 'Phone number verified successfully'
+    });
+
+  } catch (error) {
+    console.error('Verify phone OTP error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to verify phone number'
+    });
+  }
+});
+
+// Get vendor notifications
+router.get('/notifications', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+
+    const result = await notificationService.getUserNotifications(req.user.id, limit, offset);
+    
+    if (result.success) {
+      res.json({
+        notifications: result.notifications,
+        limit,
+        offset
+      });
+    } else {
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Get vendor notifications error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get notifications'
+    });
+  }
+});
+
+// Mark notification as read
+router.put('/notifications/:id/read', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const notificationId = parseInt(req.params.id);
+    const result = await notificationService.markAsRead(notificationId, req.user.id);
+    
+    if (result.success) {
+      res.json({ success: true, message: 'Notification marked as read' });
+    } else {
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to mark notification as read'
+    });
+  }
+});
+
+// Get unread notification count
+router.get('/notifications/unread-count', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.user_type !== 'VENDOR') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only vendors can access this endpoint'
+      });
+    }
+
+    const result = await notificationService.getUnreadCount(req.user.id);
+    
+    if (result.success) {
+      res.json({ count: result.count });
+    } else {
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get unread count'
+    });
+  }
+});
+
+module.exports = router;

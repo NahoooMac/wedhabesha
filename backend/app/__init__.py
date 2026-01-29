@@ -1,0 +1,1 @@
+# Wedding Platform Backend Application
