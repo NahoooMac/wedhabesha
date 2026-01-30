@@ -11,22 +11,16 @@ import {
   Filter,
   Search,
   MessageSquare,
-  Phone,
   User
 } from 'lucide-react';
 import { 
-  LeadResponse, 
   LeadStatus, 
   LeadStatusUpdateRequest,
   VendorLeadsParams,
+  VendorLeadsResponse,
+  LeadWithCoupleInfo,
   vendorApi 
 } from '../../lib/api';
-import { formatCurrency } from '../../lib/utils';
-
-interface LeadWithCoupleInfo extends LeadResponse {
-  couple_name?: string;
-  couple_email?: string;
-}
 
 const VendorLeadManagement: React.FC = () => {
   const [leads, setLeads] = useState<LeadWithCoupleInfo[]>([]);
@@ -56,18 +50,18 @@ const VendorLeadManagement: React.FC = () => {
         params.status = selectedStatus;
       }
 
-      const leadsData = await vendorApi.getMyLeads(params);
+      const response: VendorLeadsResponse = await vendorApi.getMyLeads(params);
       
       if (skip === 0) {
-        setLeads(leadsData);
+        setLeads(response.leads);
       } else {
-        setLeads(prev => [...prev, ...leadsData]);
+        setLeads(prev => [...prev, ...response.leads]);
       }
       
       setPagination(prev => ({
         ...prev,
         skip,
-        hasMore: leadsData.length === pagination.limit
+        hasMore: response.leads.length === pagination.limit
       }));
     } catch (error) {
       console.error('Failed to load leads:', error);
