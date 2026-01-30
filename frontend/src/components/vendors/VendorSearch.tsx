@@ -4,12 +4,13 @@ import { Button } from '../ui/Button';
 import { VendorCategory, VendorCategoryResponse } from '../../lib/api';
 
 interface VendorSearchProps {
-  onSearch: (params: VendorSearchParams) => void;
+  onSearch: (params: LocalVendorSearchParams) => void;
   categories: VendorCategoryResponse[];
   loading?: boolean;
+  initialValues?: LocalVendorSearchParams;
 }
 
-interface VendorSearchParams {
+interface LocalVendorSearchParams {
   search?: string;
   category?: VendorCategory;
   location?: string;
@@ -17,16 +18,31 @@ interface VendorSearchParams {
   verified_only?: boolean;
 }
 
-const VendorSearch: React.FC<VendorSearchProps> = ({ onSearch, categories, loading = false }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<VendorCategory | ''>('');
-  const [location, setLocation] = useState('');
-  const [minRating, setMinRating] = useState<number | ''>('');
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
+const VendorSearch: React.FC<VendorSearchProps> = ({ onSearch, categories, loading = false, initialValues = {} }) => {
+  const [searchTerm, setSearchTerm] = useState(initialValues.search || '');
+  const [selectedCategory, setSelectedCategory] = useState<VendorCategory | ''>(initialValues.category || '');
+  const [location, setLocation] = useState(initialValues.location || '');
+  const [minRating, setMinRating] = useState<number | ''>(initialValues.min_rating || '');
+  const [verifiedOnly, setVerifiedOnly] = useState(initialValues.verified_only || false);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Update form values when initialValues change (e.g., from URL)
+  React.useEffect(() => {
+    setSearchTerm(initialValues.search || '');
+    setSelectedCategory(initialValues.category || '');
+    setLocation(initialValues.location || '');
+    setMinRating(initialValues.min_rating || '');
+    setVerifiedOnly(initialValues.verified_only || false);
+    
+    // Show filters if any filter values are set
+    const hasFilters = initialValues.category || initialValues.location || initialValues.min_rating || initialValues.verified_only;
+    if (hasFilters) {
+      setShowFilters(true);
+    }
+  }, [initialValues]);
+
   const handleSearch = () => {
-    const params: VendorSearchParams = {};
+    const params: LocalVendorSearchParams = {};
     if (searchTerm.trim()) params.search = searchTerm.trim();
     if (selectedCategory) params.category = selectedCategory as VendorCategory;
     if (location.trim()) params.location = location.trim();

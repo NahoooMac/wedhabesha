@@ -332,6 +332,14 @@ router.put('/threads/:id/read', authenticateToken, async (req, res) => {
     const result = await messageService.markThreadAsRead(threadId, req.user.id);
 
     if (result.success) {
+      // Cancel SMS reminder when thread is marked as read
+      try {
+        await messageService.cancelUnreadSMSReminder(threadId, req.user.id.toString());
+      } catch (reminderError) {
+        console.error('⚠️ Failed to cancel SMS reminder:', reminderError);
+        // Don't fail the mark-as-read operation if reminder cancellation fails
+      }
+      
       res.json(createAPIResponse(true, { success: true }));
     } else {
       res.status(500).json(createAPIResponse(false, null, {
@@ -709,6 +717,142 @@ router.get('/search/:threadId', authenticateToken, async (req, res) => {
     res.status(500).json(createAPIResponse(false, null, {
       code: 'INTERNAL_ERROR',
       message: 'Failed to search messages'
+    }));
+  }
+});
+
+/**
+ * Get unread message counts
+ * 
+ * @route GET /api/v1/messaging/unread-counts
+ * @access Private (Couples and Vendors)
+ * @description Gets total unread count and per-thread unread counts for the authenticated user
+ */
+router.get('/unread-counts', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userType = req.user.user_type;
+
+    // Get user context
+    const userContext = await getUserContext(userId, userType);
+    if (!userContext) {
+      return res.status(404).json(createAPIResponse(false, null, {
+        code: 'USER_NOT_FOUND',
+        message: 'User profile not found'
+      }));
+    }
+
+    // Get threads for this user
+    let threadsQuery;
+    let threadsParams;
+
+    if (userContext.type === 'couple') {
+      threadsQuery = `
+        SELECT 
+          t.id,
+          COUNT(CASE WHEN m.is_read = 0 AND m.sender_type != 'couple' THEN 1 END) as unread_count
+        FROM message_threads t
+        LEFT JOIN messages m ON t.id = m.thread_id
+        WHERE t.couple_id = ?
+        GROUP BY t.id
+      `;
+      threadsParams = [userContext.id];
+    } else {
+      threadsQuery = `
+        SELECT 
+          t.id,
+          COUNT(CASE WHEN m.is_read = 0 AND m.sender_type != 'vendor' THEN 1 END) as unread_count
+        FROM message_threads t
+        LEFT JOIN messages m ON t.id = m.thread_id
+        WHERE t.vendor_id = ?
+        GROUP BY t.id
+      `;
+      threadsParams = [userContext.id];
+    }
+
+    const threadsResult = await query(threadsQuery, threadsParams);
+
+    // Calculate totals
+    let totalUnread = 0;
+    const threadCounts = {};
+
+    threadsResult.rows.forEach(thread => {
+      const unreadCount = parseInt(thread.unread_count) || 0;
+      if (unreadCount > 0) {
+        threadCounts[thread.id] = unreadCount;
+        totalUnread += unreadCount;
+      }
+    });
+
+    res.json(createAPIResponse(true, {
+      totalUnread,
+      threadCounts
+    }));
+
+  } catch (error) {
+    console.error('Get unread counts error:', error);
+    res.status(500).json(createAPIResponse(false, null, {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to get unread counts'
+    }));
+  }
+});
+
+/**
+ * Get total unread message count
+ * 
+ * @route GET /api/v1/messaging/unread-count
+ * @access Private (Couples and Vendors)
+ * @description Gets total unread message count for the authenticated user
+ */
+router.get('/unread-count', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userType = req.user.user_type;
+
+    // Get user context
+    const userContext = await getUserContext(userId, userType);
+    if (!userContext) {
+      return res.status(404).json(createAPIResponse(false, null, {
+        code: 'USER_NOT_FOUND',
+        message: 'User profile not found'
+      }));
+    }
+
+    // Get total unread count
+    let countQuery;
+    let countParams;
+
+    if (userContext.type === 'couple') {
+      countQuery = `
+        SELECT COUNT(*) as count
+        FROM messages m
+        JOIN message_threads t ON m.thread_id = t.id
+        WHERE t.couple_id = ? AND m.is_read = 0 AND m.sender_type != 'couple'
+      `;
+      countParams = [userContext.id];
+    } else {
+      countQuery = `
+        SELECT COUNT(*) as count
+        FROM messages m
+        JOIN message_threads t ON m.thread_id = t.id
+        WHERE t.vendor_id = ? AND m.is_read = 0 AND m.sender_type != 'vendor'
+      `;
+      countParams = [userContext.id];
+    }
+
+    const countResult = await query(countQuery, countParams);
+    const totalCount = parseInt(countResult.rows[0]?.count) || 0;
+
+    res.json(createAPIResponse(true, {
+      count: totalCount
+    }));
+
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json(createAPIResponse(false, null, {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to get unread count'
     }));
   }
 });

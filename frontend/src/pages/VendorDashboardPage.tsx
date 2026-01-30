@@ -22,7 +22,14 @@ import {
   Moon,
   Globe,
   Info,
-  Settings
+  Settings,
+  Package,
+  Plus,
+  Trash2,
+  Edit3,
+  MapPin,
+  Phone,
+  DollarSign
 } from 'lucide-react';
 import VendorAnalytics from '../components/vendors/VendorAnalytics';
 import VendorReviewManagement from '../components/vendors/VendorReviewManagement';
@@ -33,14 +40,19 @@ import AddressInput from '../components/vendors/AddressInput';
 import WorkingHoursInput from '../components/vendors/WorkingHoursInput';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import VendorMessaging from '../components/vendors/VendorMessaging';
+import NotificationBadge from '../components/shared/NotificationBadge';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { vendorApi } from '../lib/api';
 
 // --- Types & Interfaces ---
-interface ServicePackage {
+interface UIServicePackage {
   id: string;
   name: string;
-  price: string;
+  startingPrice: string;
   description: string;
+  photo?: string;
+  location: string;
+  phone: string;
 }
 
 interface VendorProfileData {
@@ -48,13 +60,16 @@ interface VendorProfileData {
   businessName: string;
   category: string;
   description: string;
+  startingPrice: string;
+  whyChooseUs: string[];
+  servicePackages: UIServicePackage[];
   location: string;
   phone: string;
   email: string;
   website: string;
   streetAddress: string;
   city: string;
-  services: ServicePackage[];
+  services: UIServicePackage[];
   isVerified: boolean;
   phoneVerified: boolean;
   completionPercentage: number;
@@ -96,6 +111,9 @@ const initialVendorData: VendorProfileData = {
   businessName: '',
   category: 'Photography',
   description: '',
+  startingPrice: '',
+  whyChooseUs: ['', '', '', ''],
+  servicePackages: [],
   location: 'Addis Ababa',
   phone: '+251 911 234 567',
   email: 'contact@vendor.com',
@@ -103,7 +121,7 @@ const initialVendorData: VendorProfileData = {
   streetAddress: '',
   city: 'Addis Ababa',
   services: [
-    { id: '1', name: 'Gold Wedding Package', price: '45,000', description: 'Full day coverage, 2 photographers, photobook.' }
+    { id: '1', name: 'Gold Wedding Package', startingPrice: '45,000', description: 'Full day coverage, 2 photographers, photobook.', photo: '', location: 'Addis Ababa', phone: '+251 911 234 567' }
   ],
   isVerified: false,
   phoneVerified: false,
@@ -136,16 +154,35 @@ const mockLeads: Lead[] = [
 
 // --- Components ---
 // Memoized to prevent unnecessary re-renders
-const SidebarItem = memo(({ icon: Icon, label, isActive, onClick }: { icon: any, label: string, isActive: boolean, onClick: () => void }) => (
+const SidebarItem = memo(({ 
+  icon: Icon, 
+  label, 
+  isActive, 
+  onClick, 
+  notificationCount = 0 
+}: { 
+  icon: any, 
+  label: string, 
+  isActive: boolean, 
+  onClick: () => void,
+  notificationCount?: number
+}) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative ${
       isActive 
         ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400 font-medium' 
         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
     }`}
   >
-    <Icon className={`w-5 h-5 ${isActive ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
+    <div className="relative">
+      <Icon className={`w-5 h-5 ${isActive ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
+      {notificationCount > 0 && (
+        <div className="absolute -top-1 -right-1">
+          <NotificationBadge count={notificationCount} size="sm" />
+        </div>
+      )}
+    </div>
     <span>{label}</span>
     {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-rose-600 dark:bg-rose-400" />}
   </button>
@@ -190,6 +227,8 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
   const [verificationPhone, setVerificationPhone] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editedVendor, setEditedVendor] = useState<VendorProfileData>(vendor);
+  const [editingPackage, setEditingPackage] = useState<UIServicePackage | null>(null);
+  const [showPackageForm, setShowPackageForm] = useState(false);
   
   // --- AUTH UPDATE START ---
   // Get token from localStorage (AuthContext stores it there)
@@ -216,29 +255,87 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
     try {
       setSaving(true);
       
+      // Convert UI service packages to API format
+      const apiServicePackages = editedVendor.servicePackages.map(pkg => ({
+        id: parseInt(pkg.id) || undefined,
+        name: pkg.name,
+        description: pkg.description,
+        price: parseFloat(pkg.startingPrice.replace(/,/g, '')) || 0
+      }));
+      
       // Prepare data for API
       const profileData = {
         business_name: editedVendor.businessName,
         category: editedVendor.category as any, // Type assertion for category
         location: editedVendor.location,
         description: editedVendor.description,
+        starting_price: editedVendor.startingPrice,
+        why_choose_us: editedVendor.whyChooseUs,
         phone: editedVendor.phone,
         website: editedVendor.website,
         street_address: editedVendor.streetAddress,
         city: editedVendor.city,
+        state: editedVendor.city, // Using city as state for now
+        postal_code: null,
+        country: 'Ethiopia',
         business_photos: editedVendor.businessPhotos,
-        portfolio_photos: editedVendor.portfolioPhotos
+        portfolio_photos: editedVendor.portfolioPhotos,
+        service_packages: apiServicePackages,
+        business_hours: [],
+        working_hours: editedVendor.workingHours,
+        additional_info: editedVendor.additionalInfo,
+        latitude: editedVendor.latitude,
+        longitude: editedVendor.longitude,
+        map_address: editedVendor.mapAddress
       };
 
       const result = await vendorApi.updateProfile(profileData);
       
       if (result) {
-        setVendor(editedVendor);
+        // Update the vendor state with the returned data
+        const updatedVendor: VendorProfileData = {
+          ...editedVendor,
+          id: result.id?.toString() || editedVendor.id,
+          businessName: result.business_name || editedVendor.businessName,
+          category: result.category || editedVendor.category,
+          location: result.location || editedVendor.location,
+          description: result.description || editedVendor.description,
+          startingPrice: result.starting_price || editedVendor.startingPrice,
+          whyChooseUs: result.why_choose_us || editedVendor.whyChooseUs,
+          phone: result.phone || editedVendor.phone,
+          email: result.email || editedVendor.email,
+          website: result.website || editedVendor.website,
+          streetAddress: result.street_address || editedVendor.streetAddress,
+          city: result.city || editedVendor.city,
+          businessPhotos: result.business_photos || editedVendor.businessPhotos,
+          portfolioPhotos: result.portfolio_photos || editedVendor.portfolioPhotos,
+          servicePackages: (result.service_packages || []).map((pkg: any) => ({
+            id: pkg.id?.toString() || Date.now().toString(),
+            name: pkg.name,
+            startingPrice: pkg.price?.toString() || '',
+            description: pkg.description,
+            photo: '',
+            location: result.location || '',
+            phone: result.phone || ''
+          })),
+          workingHours: result.working_hours || editedVendor.workingHours,
+          additionalInfo: result.additional_info || editedVendor.additionalInfo,
+          isVerified: result.is_verified || editedVendor.isVerified,
+          phoneVerified: result.phone_verified || editedVendor.phoneVerified,
+          verificationStatus: result.verification_status || editedVendor.verificationStatus,
+          latitude: result.latitude || editedVendor.latitude,
+          longitude: result.longitude || editedVendor.longitude,
+          mapAddress: result.map_address || editedVendor.mapAddress
+        };
+        
+        setVendor(updatedVendor);
         setIsEditing(false);
         console.log('✅ Profile updated successfully');
       }
     } catch (error) {
       console.error('❌ Failed to update profile:', error);
+      // Show error message to user
+      alert('Failed to update profile. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -285,8 +382,88 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
     }
   };
 
+  // Service Package handlers
+  const handleAddPackage = () => {
+    const newPackage: UIServicePackage = {
+      id: Date.now().toString(),
+      name: '',
+      startingPrice: '',
+      description: '',
+      photo: '',
+      location: '',
+      phone: ''
+    };
+    setEditingPackage(newPackage);
+    setShowPackageForm(true);
+  };
+
+  const handleEditPackage = (pkg: UIServicePackage) => {
+    setEditingPackage(pkg);
+    setShowPackageForm(true);
+  };
+
+  const handleSavePackage = (packageData: UIServicePackage) => {
+    if (isEditing) {
+      const existingIndex = editedVendor.servicePackages.findIndex(p => p.id === packageData.id);
+      if (existingIndex >= 0) {
+        // Update existing package
+        const updatedPackages = [...editedVendor.servicePackages];
+        updatedPackages[existingIndex] = packageData;
+        setEditedVendor(prev => ({ ...prev, servicePackages: updatedPackages }));
+      } else {
+        // Add new package
+        setEditedVendor(prev => ({ 
+          ...prev, 
+          servicePackages: [...prev.servicePackages, packageData] 
+        }));
+      }
+    } else {
+      const existingIndex = vendor.servicePackages.findIndex(p => p.id === packageData.id);
+      if (existingIndex >= 0) {
+        // Update existing package
+        const updatedPackages = [...vendor.servicePackages];
+        updatedPackages[existingIndex] = packageData;
+        setVendor({ ...vendor, servicePackages: updatedPackages });
+      } else {
+        // Add new package
+        setVendor({ 
+          ...vendor, 
+          servicePackages: [...vendor.servicePackages, packageData] 
+        });
+      }
+    }
+    setShowPackageForm(false);
+    setEditingPackage(null);
+  };
+
+  const handleDeletePackage = (packageId: string) => {
+    if (isEditing) {
+      setEditedVendor(prev => ({
+        ...prev,
+        servicePackages: prev.servicePackages.filter(p => p.id !== packageId)
+      }));
+    } else {
+      setVendor({
+        ...vendor,
+        servicePackages: vendor.servicePackages.filter(p => p.id !== packageId)
+      });
+    }
+  };
+
+  const handleWhyChooseUsChange = (index: number, value: string) => {
+    const updatedReasons = [...(isEditing ? editedVendor.whyChooseUs : vendor.whyChooseUs)];
+    updatedReasons[index] = value;
+    
+    if (isEditing) {
+      setEditedVendor(prev => ({ ...prev, whyChooseUs: updatedReasons }));
+    } else {
+      setVendor({ ...vendor, whyChooseUs: updatedReasons });
+    }
+  };
+
   const tabs = [
     { id: 'basic', label: 'Basic Info', icon: UserCircle },
+    { id: 'packages', label: 'Service Packages', icon: Package },
     { id: 'photos', label: 'Photos', icon: Store },
     { id: 'verification', label: 'Verification', icon: CheckCircle2 },
   ];
@@ -409,6 +586,36 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
               </div>
             </div>
 
+            {/* Starting Price */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Starting Price *
+                <span className="text-slate-500 dark:text-slate-400 font-normal ml-1">(ETB)</span>
+              </label>
+              {isEditing ? (
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    name="startingPrice"
+                    value={editedVendor.startingPrice || ''}
+                    onChange={(e) => setEditedVendor(prev => ({ ...prev, startingPrice: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400 focus:ring-rose-500 dark:focus:ring-rose-400"
+                    placeholder="e.g., 25,000"
+                  />
+                </div>
+              ) : (
+                <div className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+                  {vendor.startingPrice ? `ETB ${vendor.startingPrice}` : 'Not set'}
+                </div>
+              )}
+              {isEditing && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  Enter your starting price to help couples understand your pricing range
+                </p>
+              )}
+            </div>
+
             {/* Business Description */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -427,6 +634,38 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
                 <div className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white min-h-[100px]">
                   {vendor.description || 'Not set'}
                 </div>
+              )}
+            </div>
+
+            {/* Why Choose Us */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Why Choose Us?
+                <span className="text-slate-500 dark:text-slate-400 font-normal ml-1">(4 key reasons)</span>
+              </label>
+              <div className="space-y-3">
+                {(isEditing ? editedVendor.whyChooseUs : vendor.whyChooseUs).map((reason, index) => (
+                  <div key={index}>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={reason}
+                        onChange={(e) => handleWhyChooseUsChange(index, e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400 focus:ring-rose-500 dark:focus:ring-rose-400"
+                        placeholder={`Reason ${index + 1} (e.g., "10+ years of experience")`}
+                      />
+                    ) : (
+                      <div className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+                        {reason || `Reason ${index + 1} not set`}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {isEditing && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  List 4 compelling reasons why couples should choose your services
+                </p>
               )}
             </div>
 
@@ -543,6 +782,231 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
                 </p>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'packages' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Service Packages</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Create detailed service packages to showcase your offerings and pricing
+                </p>
+              </div>
+              <button
+                onClick={handleAddPackage}
+                className="px-4 py-2 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Package
+              </button>
+            </div>
+
+            {/* Service Packages List */}
+            <div className="space-y-4">
+              {(isEditing ? editedVendor.servicePackages : vendor.servicePackages).length === 0 ? (
+                <div className="text-center py-12 bg-slate-50 dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                  <Package className="w-12 h-12 text-slate-400 dark:text-slate-500 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-slate-900 dark:text-white mb-2">No Service Packages Yet</h4>
+                  <p className="text-slate-500 dark:text-slate-400 mb-4">
+                    Create your first service package to showcase your offerings
+                  </p>
+                  <button
+                    onClick={handleAddPackage}
+                    className="px-6 py-3 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition-colors flex items-center gap-2 mx-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create Package
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {(isEditing ? editedVendor.servicePackages : vendor.servicePackages).map((pkg) => (
+                    <div key={pkg.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 hover:shadow-md transition-shadow">
+                      {pkg.photo && (
+                        <div className="w-full h-48 bg-slate-100 dark:bg-slate-700 rounded-lg mb-4 overflow-hidden">
+                          <img 
+                            src={pkg.photo} 
+                            alt={pkg.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between">
+                          <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
+                            {pkg.name || 'Untitled Package'}
+                          </h4>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEditPackage(pkg)}
+                              className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePackage(pkg.id)}
+                              className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {pkg.startingPrice && (
+                          <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-semibold">
+                            <DollarSign className="w-4 h-4" />
+                            <span>Starting from ETB {pkg.startingPrice}</span>
+                          </div>
+                        )}
+                        
+                        {pkg.description && (
+                          <p className="text-slate-600 dark:text-slate-400 text-sm">
+                            {pkg.description}
+                          </p>
+                        )}
+                        
+                        <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+                          {pkg.location && (
+                            <div className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3" />
+                              <span>{pkg.location}</span>
+                            </div>
+                          )}
+                          {pkg.phone && (
+                            <div className="flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              <span>{pkg.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Package Form Modal */}
+            {showPackageForm && editingPackage && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                      {editingPackage.name ? 'Edit Package' : 'Create New Package'}
+                    </h3>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                    {/* Package Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Package Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPackage.name}
+                        onChange={(e) => setEditingPackage(prev => prev ? { ...prev, name: e.target.value } : null)}
+                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400"
+                        placeholder="e.g., Premium Wedding Package"
+                      />
+                    </div>
+
+                    {/* Starting Price */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Starting Price (ETB) *
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPackage.startingPrice}
+                        onChange={(e) => setEditingPackage(prev => prev ? { ...prev, startingPrice: e.target.value } : null)}
+                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400"
+                        placeholder="e.g., 25,000"
+                      />
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Description *
+                      </label>
+                      <textarea
+                        value={editingPackage.description}
+                        onChange={(e) => setEditingPackage(prev => prev ? { ...prev, description: e.target.value } : null)}
+                        rows={4}
+                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400"
+                        placeholder="Describe what's included in this package..."
+                      />
+                    </div>
+
+                    {/* Location and Phone */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Service Location
+                        </label>
+                        <input
+                          type="text"
+                          value={editingPackage.location}
+                          onChange={(e) => setEditingPackage(prev => prev ? { ...prev, location: e.target.value } : null)}
+                          className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400"
+                          placeholder="e.g., Addis Ababa"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Contact Phone
+                        </label>
+                        <input
+                          type="tel"
+                          value={editingPackage.phone}
+                          onChange={(e) => setEditingPackage(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                          className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400"
+                          placeholder="+251 9XX XXX XXX"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Photo URL */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        Package Photo URL
+                        <span className="text-slate-500 dark:text-slate-400 font-normal ml-1">(Optional)</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={editingPackage.photo || ''}
+                        onChange={(e) => setEditingPackage(prev => prev ? { ...prev, photo: e.target.value } : null)}
+                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-rose-500 dark:focus:border-rose-400"
+                        placeholder="https://example.com/package-photo.jpg"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-6 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowPackageForm(false);
+                        setEditingPackage(null);
+                      }}
+                      className="px-6 py-3 bg-gray-500 text-white rounded-xl font-medium hover:bg-gray-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => editingPackage && handleSavePackage(editingPackage)}
+                      disabled={!editingPackage?.name || !editingPackage?.startingPrice || !editingPackage?.description}
+                      className="px-6 py-3 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                    >
+                      Save Package
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -681,6 +1145,46 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
 };
 
 const DashboardHome = ({ vendor, setView }: { vendor: VendorProfileData, setView: (view: string) => void }) => {
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  const [recentLeads, setRecentLeads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true);
+        
+        // Load dashboard stats
+        const stats = await vendorApi.getDashboardStats();
+        setDashboardStats(stats);
+
+        // Load recent leads
+        const leadsResponse = await vendorApi.getMyLeads({ skip: 0, limit: 3 });
+        setRecentLeads(leadsResponse.leads || []);
+
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+        // Use fallback data
+        setDashboardStats({
+          total_leads: 0,
+          new_leads: 0,
+          contacted_leads: 0,
+          converted_leads: 0,
+          total_reviews: 0,
+          average_rating: null,
+          recent_leads: 0,
+          avg_response_time: '-',
+          conversion_rate: '0'
+        });
+        setRecentLeads([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Welcome & Profile Status */}
@@ -721,9 +1225,44 @@ const DashboardHome = ({ vendor, setView }: { vendor: VendorProfileData, setView
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard title="Total Leads" value="24" trend="+12%" icon={UserCircle} colorClass="bg-blue-500 text-blue-600" />
-            <StatCard title="Avg. Response" value="2h" trend="-30m" icon={Clock} colorClass="bg-purple-500 text-purple-600" />
-            <StatCard title="Rating" value="4.8" icon={Star} colorClass="bg-amber-500 text-amber-600" />
+            {loading ? (
+              <>
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm animate-pulse">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                  <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                </div>
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm animate-pulse">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                  <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                </div>
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm animate-pulse">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                  <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                </div>
+              </>
+            ) : (
+              <>
+                <StatCard 
+                  title="Total Leads" 
+                  value={dashboardStats?.total_leads || 0} 
+                  trend={dashboardStats?.recent_leads > 0 ? `+${dashboardStats.recent_leads}` : undefined}
+                  icon={UserCircle} 
+                  colorClass="bg-blue-500 text-blue-600" 
+                />
+                <StatCard 
+                  title="Avg. Response" 
+                  value={dashboardStats?.avg_response_time || '-'} 
+                  icon={Clock} 
+                  colorClass="bg-purple-500 text-purple-600" 
+                />
+                <StatCard 
+                  title="Rating" 
+                  value={dashboardStats?.average_rating || '-'} 
+                  icon={Star} 
+                  colorClass="bg-amber-500 text-amber-600" 
+                />
+              </>
+            )}
           </div>
 
           {/* Messaging Summary Card */}
@@ -755,7 +1294,7 @@ const DashboardHome = ({ vendor, setView }: { vendor: VendorProfileData, setView
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Active Chats</div>
               </div>
               <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                <div className="text-2xl font-bold text-slate-900 dark:text-white">-</div>
+                <div className="text-2xl font-bold text-slate-900 dark:text-white">{dashboardStats?.avg_response_time || '-'}</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Avg Response</div>
               </div>
             </div>
@@ -794,32 +1333,88 @@ const DashboardHome = ({ vendor, setView }: { vendor: VendorProfileData, setView
           </button>
         </div>
         <div className="divide-y divide-slate-50 dark:divide-slate-800">
-          {mockLeads.slice(0, 3).map((lead) => (
-            <div key={lead.id} className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-              <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold text-sm">
-                {lead.coupleName.charAt(0)}
+          {loading ? (
+            // Loading skeleton
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="p-4 flex items-center gap-4 animate-pulse">
+                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+                <div className="flex-1 min-w-0">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
+                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+                </div>
+                <div className="w-16 h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
               </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">{lead.coupleName}</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{lead.message}</p>
+            ))
+          ) : recentLeads.length > 0 ? (
+            recentLeads.map((lead) => (
+              <div key={lead.id} className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold text-sm">
+                  {lead.couple_name?.charAt(0) || 'C'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">{lead.couple_name || 'Unknown Couple'}</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{lead.message}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                    lead.status === 'new' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 
+                    lead.status === 'converted' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' :
+                    'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {lead.status}
+                  </span>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{lead.date_received}</p>
+                </div>
               </div>
-              <div className="text-right">
-                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  lead.status === 'New' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                }`}>
-                  {lead.status}
-                </span>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{lead.dateReceived}</p>
-              </div>
+            ))
+          ) : (
+            <div className="p-8 text-center">
+              <UserCircle className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-1">No inquiries yet</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Complete your profile to start receiving leads from couples
+              </p>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-const LeadsView = ({ leads }: { leads: Lead[] }) => {
+const LeadsView = () => {
+  const [leads, setLeads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+
+  useEffect(() => {
+    const loadLeads = async () => {
+      try {
+        setLoading(true);
+        const response = await vendorApi.getMyLeads({ skip: 0, limit: 50 });
+        setLeads(response.leads || []);
+      } catch (error) {
+        console.error('Failed to load leads:', error);
+        setLeads([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadLeads();
+  }, []);
+
+  const filteredLeads = leads.filter(lead => {
+    const matchesSearch = !searchTerm || 
+      lead.couple_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.message?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = !statusFilter || lead.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
@@ -830,62 +1425,95 @@ const LeadsView = ({ leads }: { leads: Lead[] }) => {
             <input 
               type="text" 
               placeholder="Search..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl text-sm focus:border-rose-500 dark:focus:border-rose-400 focus:ring-rose-500 dark:focus:ring-rose-400 w-48" 
             />
           </div>
-          <button className="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-            <Filter className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-          </button>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl text-sm focus:border-rose-500 dark:focus:border-rose-400"
+          >
+            <option value="">All Status</option>
+            <option value="new">New</option>
+            <option value="contacted">Contacted</option>
+            <option value="converted">Converted</option>
+            <option value="closed">Closed</option>
+          </select>
         </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-            <tr>
-              <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Couple</th>
-              <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Date & Status</th>
-              <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Details</th>
-              <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {leads.map((lead) => (
-              <tr key={lead.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400 font-bold">
-                      {lead.coupleName.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="font-medium text-slate-900 dark:text-white">{lead.coupleName}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{lead.dateReceived}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="space-y-1">
-                    <div className="text-sm text-slate-900 dark:text-white">{lead.eventDate}</div>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      lead.status === 'New' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 
-                      lead.status === 'Booked' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' :
-                      'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                    }`}>
-                      {lead.status}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-sm text-slate-900 dark:text-white font-medium">{lead.budget}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 max-w-xs truncate">{lead.message}</div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button className="text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-medium text-sm transition-colors">Reply</button>
-                </td>
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="w-8 h-8 border-2 border-rose-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-slate-500 dark:text-slate-400">Loading leads...</p>
+          </div>
+        ) : filteredLeads.length === 0 ? (
+          <div className="p-8 text-center">
+            <UserCircle className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
+              {searchTerm || statusFilter ? 'No matching leads found' : 'No leads yet'}
+            </h3>
+            <p className="text-slate-500 dark:text-slate-400">
+              {searchTerm || statusFilter 
+                ? 'Try adjusting your search or filter criteria'
+                : 'Complete your profile to start receiving inquiries from couples'
+              }
+            </p>
+          </div>
+        ) : (
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+              <tr>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Couple</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Date & Status</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Details</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredLeads.map((lead) => (
+                <tr key={lead.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400 font-bold">
+                        {lead.couple_name?.charAt(0) || 'C'}
+                      </div>
+                      <div>
+                        <div className="font-medium text-slate-900 dark:text-white">{lead.couple_name || 'Unknown Couple'}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{lead.date_received}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="space-y-1">
+                      <div className="text-sm text-slate-900 dark:text-white">{lead.event_date || 'Not specified'}</div>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        lead.status === 'new' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 
+                        lead.status === 'converted' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' :
+                        lead.status === 'contacted' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' :
+                        'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}>
+                        {lead.status}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-slate-900 dark:text-white font-medium">{lead.budget_range || 'Budget not specified'}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 max-w-xs truncate">{lead.message}</div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button className="text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-medium text-sm transition-colors">
+                      Reply
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -900,6 +1528,9 @@ const VendorDashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+
+  // Unread messages hook
+  const { totalUnread } = useUnreadMessages(user?.id?.toString() || '');
 
   // Performance monitoring
   useEffect(() => {
@@ -944,6 +1575,17 @@ const VendorDashboardPage: React.FC = () => {
             businessName: profile.business_name || '',
             category: profile.category || 'Photography',
             description: profile.description || '',
+            startingPrice: profile.starting_price || '',
+            whyChooseUs: profile.why_choose_us || ['', '', '', ''],
+            servicePackages: (profile.service_packages || []).map(pkg => ({
+              id: pkg.id?.toString() || Date.now().toString(),
+              name: pkg.name,
+              startingPrice: pkg.price?.toString() || '',
+              description: pkg.description,
+              photo: '',
+              location: profile.location || '',
+              phone: profile.phone || ''
+            })),
             location: profile.location || 'Addis Ababa',
             phone: profile.phone || '',
             email: profile.email || user?.email || '',
@@ -953,15 +1595,18 @@ const VendorDashboardPage: React.FC = () => {
             services: (profile.service_packages || []).map(pkg => ({
               id: pkg.id?.toString() || '',
               name: pkg.name,
-              price: pkg.price?.toString() || '',
-              description: pkg.description
+              startingPrice: pkg.price?.toString() || '',
+              description: pkg.description,
+              photo: '',
+              location: profile.location || '',
+              phone: profile.phone || ''
             })),
             isVerified: profile.is_verified || false,
-            phoneVerified: false, // Not in API response yet
+            phoneVerified: profile.phone_verified || false,
             completionPercentage: 0, // Will be calculated below
             businessPhotos: profile.business_photos || [],
             portfolioPhotos: profile.portfolio_photos || [],
-            workingHours: [
+            workingHours: profile.working_hours || [
               { day: 'Monday', isOpen: true, openTime: '09:00', closeTime: '18:00' },
               { day: 'Tuesday', isOpen: true, openTime: '09:00', closeTime: '18:00' },
               { day: 'Wednesday', isOpen: true, openTime: '09:00', closeTime: '18:00' },
@@ -970,13 +1615,13 @@ const VendorDashboardPage: React.FC = () => {
               { day: 'Saturday', isOpen: true, openTime: '10:00', closeTime: '16:00' },
               { day: 'Sunday', isOpen: false, openTime: '09:00', closeTime: '18:00' }
             ],
-            additionalInfo: '',
-            verificationStatus: 'pending',
-            verificationDate: undefined,
-            verificationHistory: [],
-            latitude: undefined,
-            longitude: undefined,
-            mapAddress: ''
+            additionalInfo: profile.additional_info || '',
+            verificationStatus: profile.verification_status || 'pending',
+            verificationDate: profile.verification_date,
+            verificationHistory: profile.verification_history || [],
+            latitude: profile.latitude,
+            longitude: profile.longitude,
+            mapAddress: profile.map_address || ''
           };
 
           setVendorData(mappedProfile);
@@ -1003,13 +1648,15 @@ const VendorDashboardPage: React.FC = () => {
   // Update completion percentage based on data - memoized to prevent unnecessary recalculations
   useEffect(() => {
     let score = 0;
-    if (vendorData.businessName) score += 20;
-    if (vendorData.description) score += 20;
-    if (vendorData.streetAddress) score += 20;
-    if (vendorData.services.length > 0) score += 20;
-    if (vendorData.phone) score += 20;
+    if (vendorData.businessName) score += 15;
+    if (vendorData.description) score += 15;
+    if (vendorData.streetAddress) score += 15;
+    if (vendorData.phone) score += 15;
+    if (vendorData.startingPrice) score += 10;
+    if (vendorData.whyChooseUs.some(reason => reason.trim())) score += 10;
+    if (vendorData.servicePackages.length > 0) score += 20;
     setVendorData(prev => ({ ...prev, completionPercentage: score }));
-  }, [vendorData.businessName, vendorData.description, vendorData.streetAddress, vendorData.services.length, vendorData.phone]);
+  }, [vendorData.businessName, vendorData.description, vendorData.streetAddress, vendorData.phone, vendorData.startingPrice, vendorData.whyChooseUs, vendorData.servicePackages.length]);
 
   // Memoized handlers to prevent unnecessary re-renders
   const handleViewChange = useCallback((view: string) => {
@@ -1088,7 +1735,13 @@ const VendorDashboardPage: React.FC = () => {
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-4">
           <SidebarItem icon={LayoutDashboard} label="Dashboard" isActive={activeView === 'dashboard'} onClick={() => handleViewChange('dashboard')} />
           <SidebarItem icon={Store} label="Business Profile" isActive={activeView === 'profile'} onClick={() => handleViewChange('profile')} />
-          <SidebarItem icon={MessageSquare} label="Messages" isActive={activeView === 'messages'} onClick={() => handleViewChange('messages')} />
+          <SidebarItem 
+            icon={MessageSquare} 
+            label="Messages" 
+            isActive={activeView === 'messages'} 
+            onClick={() => handleViewChange('messages')}
+            notificationCount={totalUnread}
+          />
           <SidebarItem icon={UserCircle} label="Leads & Inquiries" isActive={activeView === 'leads'} onClick={() => handleViewChange('leads')} />
           <SidebarItem icon={BarChart3} label="Analytics" isActive={activeView === 'analytics'} onClick={() => handleViewChange('analytics')} />
           <SidebarItem icon={Star} label="Reviews" isActive={activeView === 'reviews'} onClick={() => handleViewChange('reviews')} />
@@ -1167,10 +1820,10 @@ const VendorDashboardPage: React.FC = () => {
         <div className="p-6 md:p-8 max-w-7xl mx-auto w-full">
           {activeView === 'dashboard' && <DashboardHome vendor={vendorData} setView={setActiveView} />}
           {activeView === 'profile' && <VendorProfileView vendor={vendorData} setVendor={setVendorData} />}
-          {activeView === 'leads' && <LeadsView leads={mockLeads} />}
+          {activeView === 'leads' && <LeadsView />}
           {activeView === 'messages' && <VendorMessaging vendorId={vendorData.id} userId={user?.id?.toString() || ''} />}
           {activeView === 'analytics' && <VendorAnalytics />}
-          {activeView === 'reviews' && <VendorReviewManagement />}
+          {activeView === 'reviews' && <VendorReviewManagement vendorId={vendorData.id} />}
           {activeView === 'settings' && <UniversalSettings userType="VENDOR" darkMode={darkMode} setDarkMode={setDarkMode} />}
         </div>
       </main>

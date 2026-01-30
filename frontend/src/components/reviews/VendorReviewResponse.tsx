@@ -77,7 +77,7 @@ const VendorReviewResponse: React.FC<VendorReviewResponseProps> = ({
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
               <span className="text-primary-600 font-medium text-sm">
-                {review.couple_id.toString().slice(-2)}
+                {review.user_id.toString().slice(-2)}
               </span>
             </div>
             
@@ -87,11 +87,7 @@ const VendorReviewResponse: React.FC<VendorReviewResponseProps> = ({
                 <span className="font-medium text-secondary-900">
                   {getRatingText(review.rating)}
                 </span>
-                {review.is_verified && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Verified
-                  </span>
-                )}
+                {/* Note: is_verified field not available in current backend response */}
               </div>
               
               <div className="flex items-center gap-2 text-sm text-secondary-600">
@@ -108,7 +104,7 @@ const VendorReviewResponse: React.FC<VendorReviewResponseProps> = ({
         <div className="mb-6">
           <h4 className="font-medium text-secondary-900 mb-2">Customer Review</h4>
           <p className="text-secondary-700 leading-relaxed">
-            {review.comment}
+            {review.review_text || 'No comment provided'}
           </p>
         </div>
 

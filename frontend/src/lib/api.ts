@@ -180,7 +180,8 @@ class ApiClient {
           // Success - parse and return response
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
-            return await response.json();
+            const result = await response.json();
+            return result;
           }
           return response as unknown as T;
         }
@@ -666,16 +667,14 @@ export const vendorApi = {
   // Get vendor reviews
   getVendorReviews: (vendorId: number, params: ReviewsParams) => {
     const searchParams = new URLSearchParams();
-    if (params.verified_only !== undefined) searchParams.append('verified_only', params.verified_only.toString());
-    searchParams.append('skip', params.skip.toString());
     searchParams.append('limit', params.limit.toString());
+    searchParams.append('offset', params.offset.toString());
+    if (params.verified_only !== undefined) {
+      searchParams.append('verified_only', params.verified_only.toString());
+    }
     
     return apiClient.get<ReviewsResponse>(`/api/v1/vendors/${vendorId}/reviews?${searchParams.toString()}`);
   },
-
-  // Get vendor rating breakdown
-  getRatingBreakdown: (vendorId: number) =>
-    apiClient.get<RatingBreakdownResponse>(`/api/v1/vendors/${vendorId}/rating-breakdown`),
 
   // Check review eligibility
   checkReviewEligibility: (vendorId: number) =>
@@ -695,14 +694,18 @@ export const vendorApi = {
   updateProfile: (data: VendorProfileUpdateRequest) =>
     apiClient.put<VendorResponse>('/api/v1/vendors/profile', data),
 
+  // Dashboard stats
+  getDashboardStats: () =>
+    apiClient.get<VendorDashboardStats>('/api/v1/vendors/dashboard/stats'),
+
   // Lead management
   getMyLeads: (params: VendorLeadsParams) => {
     const searchParams = new URLSearchParams();
     if (params.status) searchParams.append('status', params.status);
-    searchParams.append('skip', params.skip.toString());
+    searchParams.append('offset', params.skip.toString());
     searchParams.append('limit', params.limit.toString());
     
-    return apiClient.get<LeadResponse[]>(`/api/v1/vendors/profile/leads?${searchParams.toString()}`);
+    return apiClient.get<VendorLeadsResponse>(`/api/v1/vendors/leads?${searchParams.toString()}`);
   },
 
   updateLeadStatus: (leadId: number, data: LeadStatusUpdateRequest) =>
@@ -718,6 +721,14 @@ export const vendorApi = {
 
   verifyPhoneOTP: async (phone: string, code: string): Promise<{ success: boolean; verified: boolean; message: string }> => {
     return apiClient.post<{ success: boolean; verified: boolean; message: string }>('/api/v1/vendors/verify-phone/verify', { phone, code });
+  },
+
+  // Password change
+  changePassword: async (currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
+    return apiClient.post<{ success: boolean; message: string }>('/api/v1/vendors/change-password', { 
+      current_password: currentPassword, 
+      new_password: newPassword 
+    });
   },
 };
 
@@ -769,6 +780,8 @@ export interface VendorResponse {
   category: VendorCategory;
   location: string;
   description: string;
+  starting_price?: string;
+  why_choose_us?: string[];
   phone?: string;
   email?: string;
   website?: string;
@@ -784,8 +797,28 @@ export interface VendorResponse {
   portfolio_photos?: string[];
   service_packages?: ServicePackage[];
   business_hours?: BusinessHours[];
+  working_hours?: Array<{
+    day: string;
+    isOpen: boolean;
+    openTime: string;
+    closeTime: string;
+  }>;
+  additional_info?: string;
   is_verified: boolean;
+  phone_verified?: boolean;
+  verified_phone?: string;
   rating?: number;
+  verification_status?: 'pending' | 'verified' | 'rejected';
+  verification_date?: string;
+  verification_history?: Array<{
+    status: string;
+    date: string;
+    reason?: string;
+    notes?: string;
+  }>;
+  latitude?: number;
+  longitude?: number;
+  map_address?: string;
   created_at: string;
 }
 
@@ -847,32 +880,38 @@ export interface LeadResponse {
 
 export interface ReviewCreateRequest {
   rating: number;
-  comment: string;
+  review_text: string;
 }
 
 export interface ReviewResponse {
   id: number;
   vendor_id: number;
-  couple_id: number;
+  user_id: number;
   rating: number;
-  comment: string;
-  is_verified: boolean;
+  review_text?: string;
+  is_flagged: boolean;
+  is_hidden: boolean;
   created_at: string;
+  updated_at: string;
+  user_email: string;
 }
 
 export interface ReviewsParams {
-  verified_only?: boolean;
-  skip: number;
   limit: number;
+  offset: number;
+  verified_only?: boolean;
 }
 
 export interface ReviewsResponse {
   reviews: ReviewResponse[];
   total: number;
-  skip: number;
+  offset: number;
   limit: number;
-  has_more: boolean;
-  average_rating?: number;
+  summary: {
+    average_rating?: string;
+    total_reviews: number;
+    rating_distribution: Record<number, number>;
+  };
 }
 
 export interface RatingBreakdownResponse {
@@ -917,12 +956,14 @@ export interface VendorProfileCreateRequest {
   category: VendorCategory;
   location: string;
   description: string;
+  starting_price?: string;
+  why_choose_us?: string[];
   phone?: string;
   website?: string;
   street_address?: string;
   city?: string;
   state?: string;
-  postal_code?: string;
+  postal_code?: string | null;
   country?: string;
   years_in_business?: number;
   team_size?: number;
@@ -931,6 +972,16 @@ export interface VendorProfileCreateRequest {
   portfolio_photos?: string[];
   service_packages?: ServicePackage[];
   business_hours?: BusinessHours[];
+  working_hours?: Array<{
+    day: string;
+    isOpen: boolean;
+    openTime: string;
+    closeTime: string;
+  }>;
+  additional_info?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  map_address?: string | null;
 }
 
 export interface VendorProfileUpdateRequest {
@@ -938,12 +989,14 @@ export interface VendorProfileUpdateRequest {
   category?: VendorCategory;
   location?: string;
   description?: string;
+  starting_price?: string;
+  why_choose_us?: string[];
   phone?: string;
   website?: string;
   street_address?: string;
   city?: string;
   state?: string;
-  postal_code?: string;
+  postal_code?: string | null;
   country?: string;
   years_in_business?: number;
   team_size?: number;
@@ -952,6 +1005,16 @@ export interface VendorProfileUpdateRequest {
   portfolio_photos?: string[];
   service_packages?: ServicePackage[];
   business_hours?: BusinessHours[];
+  working_hours?: Array<{
+    day: string;
+    isOpen: boolean;
+    openTime: string;
+    closeTime: string;
+  }>;
+  additional_info?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  map_address?: string | null;
 }
 
 export interface VendorLeadsParams {
@@ -971,9 +1034,29 @@ export interface VendorLeadStatsResponse {
   recent_leads: number;
 }
 
+export interface VendorDashboardStats {
+  total_leads: number;
+  new_leads: number;
+  contacted_leads: number;
+  converted_leads: number;
+  total_reviews: number;
+  average_rating: string | null;
+  recent_leads: number;
+  avg_response_time: string;
+  conversion_rate: string;
+}
+
+export interface VendorLeadsResponse {
+  leads: LeadWithCoupleInfo[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface LeadWithCoupleInfo extends LeadResponse {
   couple_name: string;
   couple_email: string;
+  date_received: string;
 }
 
 // Admin API functions

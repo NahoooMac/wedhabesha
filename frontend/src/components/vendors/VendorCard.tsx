@@ -103,7 +103,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onContact, onViewProfil
       {/* Image Container */}
       <div className="relative h-64 overflow-hidden">
         {/* Skeleton/Placeholder */}
-        <div className={`absolute inset-0 bg-gray-200 dark:bg-gray-700 animate-pulse transition-opacity duration-500 ${imageLoaded ? 'opacity-0' : 'opacity-100'}`} />
+        <div className={`absolute inset-0 bg-gray-200 dark:bg-gray-700  ${imageLoaded ? 'opacity-0' : 'opacity-100'}`} />
         
         {/* Image */}
         {vendorImage ? (

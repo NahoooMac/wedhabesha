@@ -130,16 +130,14 @@ const ReviewEligibilityChecker: React.FC<ReviewEligibilityCheckerProps> = ({
 
             {/* Eligibility Details */}
             <div className="space-y-2 mb-4">
-              <div className="flex items-center gap-2 text-sm">
-                {eligibility.has_booking ? (
+              {eligibility.has_booking && (
+                <div className="flex items-center gap-2 text-sm">
                   <CheckCircle className="h-4 w-4 text-green-500" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-red-500" />
-                )}
-                <span className={eligibility.has_booking ? 'text-green-700' : 'text-red-700'}>
-                  {eligibility.has_booking ? 'You have booked this vendor' : 'No booking with this vendor'}
-                </span>
-              </div>
+                  <span className="text-green-700">
+                    You have worked with this vendor
+                  </span>
+                </div>
+              )}
               
               <div className="flex items-center gap-2 text-sm">
                 {eligibility.already_reviewed ? (
@@ -172,8 +170,7 @@ const ReviewEligibilityChecker: React.FC<ReviewEligibilityCheckerProps> = ({
 
             {!eligibility.has_booking && (
               <div className="text-sm text-secondary-600">
-                You can only review vendors you have actually worked with. 
-                Contact this vendor and complete a booking to be eligible for reviews.
+                Share your experience with this vendor to help other couples make informed decisions.
               </div>
             )}
           </div>

@@ -32,7 +32,8 @@ const ReviewInterface: React.FC<ReviewInterfaceProps> = ({
 
   const handleReviewSubmitted = () => {
     setViewMode('display');
-    setRefreshKey(prev => prev + 1); // Force refresh of reviews
+    // Use timestamp to ensure unique refresh key
+    setRefreshKey(Date.now());
   };
 
   const handleCancel = () => {

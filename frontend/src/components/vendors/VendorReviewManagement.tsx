@@ -2,12 +2,12 @@ import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import VendorReviewManagement from '../reviews/VendorReviewManagement';
 
-const VendorReviewManagementWrapper: React.FC = () => {
+interface VendorReviewManagementWrapperProps {
+  vendorId?: string;
+}
+
+const VendorReviewManagementWrapper: React.FC<VendorReviewManagementWrapperProps> = ({ vendorId }) => {
   const { user } = useAuth();
-  
-  // In a real app, you would get the vendor ID from the user's vendor profile
-  // For now, we'll use a placeholder
-  const vendorId = 1; // This would come from the vendor profile context
   
   if (!user || user.user_type !== 'VENDOR') {
     return (
@@ -17,7 +17,19 @@ const VendorReviewManagementWrapper: React.FC = () => {
     );
   }
 
-  return <VendorReviewManagement vendorId={vendorId} />;
+  // Convert vendorId to number, fallback to user ID if available
+  const numericVendorId = vendorId ? parseInt(vendorId, 10) : (user.id ? parseInt(user.id.toString(), 10) : 1);
+
+  // Validate that we have a valid vendor ID
+  if (isNaN(numericVendorId) || numericVendorId <= 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600">Invalid vendor ID. Please contact support.</p>
+      </div>
+    );
+  }
+
+  return <VendorReviewManagement vendorId={numericVendorId} />;
 };
 
 export default VendorReviewManagementWrapper;

@@ -20,18 +20,15 @@ interface VendorProfileModalProps {
   vendor: VendorResponse;
   isOpen: boolean;
   onClose: () => void;
-  onContact: (vendor: VendorResponse) => void;
 }
 
 const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
   vendor,
   isOpen,
-  onClose,
-  onContact
+  onClose
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [reviews, setReviews] = useState<ReviewsResponse | null>(null);
   const [ratingBreakdown, setRatingBreakdown] = useState<RatingBreakdownResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'portfolio' | 'services'>('overview');
@@ -50,12 +47,17 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
   const loadVendorData = async () => {
     setLoading(true);
     try {
-      const [reviewsData, ratingData] = await Promise.all([
-        vendorApi.getVendorReviews(vendor.id, { verified_only: true, skip: 0, limit: 10 }),
-        vendorApi.getRatingBreakdown(vendor.id)
-      ]);
-      setReviews(reviewsData);
-      setRatingBreakdown(ratingData);
+      const reviewsData = await vendorApi.getVendorReviews(vendor.id, { verified_only: true, offset: 0, limit: 10 });
+      
+      // Set rating breakdown from the reviews response
+      if (reviewsData.summary) {
+        setRatingBreakdown({
+          total_reviews: reviewsData.summary.total_reviews,
+          average_rating: reviewsData.summary.average_rating ? parseFloat(reviewsData.summary.average_rating) : undefined,
+          rating_distribution: reviewsData.summary.rating_distribution,
+          recent_reviews: [] // Not provided by backend
+        });
+      }
     } catch (error) {
       console.error('Failed to load vendor data:', error);
     } finally {
@@ -126,8 +128,9 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
 
   // Directions functionality
   const handleGetDirections = () => {
-    const address = encodeURIComponent(vendor.location);
-    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
+    const address = vendor.map_address || vendor.street_address || vendor.location;
+    const encodedAddress = encodeURIComponent(address);
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
     window.open(googleMapsUrl, '_blank');
   };
 
@@ -153,7 +156,7 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
       await handleMessageVendor(
         vendor.id.toString(),
         vendor.business_name,
-        (threadId) => {
+        () => {
           // Success - close modal and show success message
           onClose();
           // The messaging utility will handle navigation to Communication tab
@@ -283,7 +286,7 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
                 <div className="flex flex-wrap items-center gap-6 text-gray-300 text-sm md:text-base">
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-rose-400" />
-                    {vendor.location}
+                    {vendor.city && vendor.state ? `${vendor.city}, ${vendor.state}` : vendor.location}
                   </div>
                   <div className="flex items-center gap-2">
                     <Star className="w-4 h-4 text-yellow-400 fill-current" />
@@ -339,7 +342,7 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
                   <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
                     <h4 className="font-medium text-gray-900 dark:text-white mb-2">Service Area</h4>
                     <p className="text-gray-500 leading-relaxed">
-                      {vendor.service_area || `${vendor.location} and surrounding areas`}
+                      {vendor.service_area || `${vendor.city || vendor.location} and surrounding areas`}
                     </p>
                   </div>
                 </div>
@@ -348,7 +351,11 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
               {/* Map Card */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl p-2 shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <div className="h-48 rounded-xl overflow-hidden relative">
-                  <EmbeddedMap venueName={vendor.business_name} venueAddress={vendor.location} className="w-full h-full" />
+                  <EmbeddedMap 
+                    venueName={vendor.business_name} 
+                    venueAddress={vendor.map_address || vendor.street_address || vendor.location} 
+                    className="w-full h-full" 
+                  />
                 </div>
                 <div className="p-3 text-center">
                   <Button 
@@ -398,22 +405,37 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
                     <section>
                       <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Why Choose Us</h3>
                       <div className="grid sm:grid-cols-2 gap-4">
-                        {[
-                          { title: 'Experienced Team', desc: 'Years of professional service' },
-                          { title: 'Quality Guarantee', desc: 'Top-tier equipment & materials' },
-                          { title: 'Custom Packages', desc: 'Tailored to your budget' },
-                          { title: 'Verified Vendor', desc: 'Vetted by WedHabesha' }
-                        ].map((item, i) => (
-                          <div key={i} className="flex gap-4 p-5 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-900/20 flex items-center justify-center text-rose-500 shrink-0">
-                              <Award className="w-6 h-6" />
+                        {vendor.why_choose_us && vendor.why_choose_us.length > 0 && vendor.why_choose_us.some(reason => reason.trim()) ? (
+                          vendor.why_choose_us.filter(reason => reason.trim()).map((reason, i) => (
+                            <div key={i} className="flex gap-4 p-5 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                              <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-900/20 flex items-center justify-center text-rose-500 shrink-0">
+                                <Award className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-gray-900 dark:text-white">{reason}</h4>
+                                <p className="text-sm text-gray-500">What makes us special</p>
+                              </div>
                             </div>
-                            <div>
-                              <h4 className="font-bold text-gray-900 dark:text-white">{item.title}</h4>
-                              <p className="text-sm text-gray-500">{item.desc}</p>
+                          ))
+                        ) : (
+                          // Fallback content when no reasons are provided
+                          [
+                            { title: 'Experienced Team', desc: 'Years of professional service' },
+                            { title: 'Quality Guarantee', desc: 'Top-tier equipment & materials' },
+                            { title: 'Custom Packages', desc: 'Tailored to your budget' },
+                            { title: 'Verified Vendor', desc: 'Vetted by WedHabesha' }
+                          ].map((item, i) => (
+                            <div key={i} className="flex gap-4 p-5 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                              <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-900/20 flex items-center justify-center text-rose-500 shrink-0">
+                                <Award className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-gray-900 dark:text-white">{item.title}</h4>
+                                <p className="text-sm text-gray-500">{item.desc}</p>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </section>
                   </div>

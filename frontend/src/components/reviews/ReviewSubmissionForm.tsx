@@ -40,13 +40,17 @@ const ReviewSubmissionForm: React.FC<ReviewSubmissionFormProps> = ({
     try {
       const reviewData: ReviewCreateRequest = {
         rating,
-        comment: comment.trim()
+        review_text: comment.trim()
       };
 
-      await vendorApi.createReview(vendor.id, reviewData);
+      console.log('Submitting review:', { vendorId: vendor.id, reviewData });
+      
+      const result = await vendorApi.createReview(vendor.id, reviewData);
+      console.log('Review submitted successfully:', result);
+      
       onSuccess();
     } catch (error: any) {
-      console.error('Failed to submit review:', error);
+      console.error('Review submission failed:', error);
       setError(error.message || 'Failed to submit review. Please try again.');
     } finally {
       setLoading(false);

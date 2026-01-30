@@ -43,7 +43,6 @@ const ReviewDisplay: React.FC<ReviewDisplayProps> = ({
 
   useEffect(() => {
     loadReviews();
-    loadRatingBreakdown();
   }, [vendorId, filters]);
 
   const loadReviews = async (skip = 0) => {
@@ -51,7 +50,7 @@ const ReviewDisplay: React.FC<ReviewDisplayProps> = ({
     try {
       const response = await vendorApi.getVendorReviews(vendorId, {
         verified_only: filters.verified_only,
-        skip,
+        offset: skip,  // Changed from skip to offset
         limit: pagination.limit
       });
 
@@ -80,15 +79,24 @@ const ReviewDisplay: React.FC<ReviewDisplayProps> = ({
 
       if (skip === 0) {
         setReviews(sortedReviews);
+        // Set rating breakdown from the reviews response
+        if (response.summary) {
+          setRatingBreakdown({
+            total_reviews: response.summary.total_reviews,
+            average_rating: response.summary.average_rating ? parseFloat(response.summary.average_rating) : undefined,
+            rating_distribution: response.summary.rating_distribution,
+            recent_reviews: [] // Not provided by backend
+          });
+        }
       } else {
         setReviews(prev => [...prev, ...sortedReviews]);
       }
 
       setPagination({
-        skip: response.skip,
+        skip: response.offset || 0,
         limit: response.limit,
         total: response.total,
-        hasMore: response.has_more
+        hasMore: response.reviews.length === response.limit
       });
     } catch (error) {
       console.error('Failed to load reviews:', error);
@@ -98,12 +106,8 @@ const ReviewDisplay: React.FC<ReviewDisplayProps> = ({
   };
 
   const loadRatingBreakdown = async () => {
-    try {
-      const breakdown = await vendorApi.getRatingBreakdown(vendorId);
-      setRatingBreakdown(breakdown);
-    } catch (error) {
-      console.error('Failed to load rating breakdown:', error);
-    }
+    // Rating breakdown is now loaded with reviews, so this function is no longer needed
+    // but we keep it for compatibility
   };
 
   const handleLoadMore = () => {
@@ -326,7 +330,7 @@ const ReviewDisplay: React.FC<ReviewDisplayProps> = ({
                   {/* Reviewer Avatar */}
                   <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-primary-600 font-medium text-sm">
-                      {review.couple_id.toString().slice(-2)}
+                      {review.user_id?.toString().slice(-2) || 'U'}
                     </span>
                   </div>
 
@@ -344,17 +348,11 @@ const ReviewDisplay: React.FC<ReviewDisplayProps> = ({
                         <Calendar className="h-4 w-4" />
                         {formatDate(review.created_at)}
                       </div>
-
-                      {review.is_verified && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          Verified
-                        </span>
-                      )}
                     </div>
 
                     {/* Review Content */}
                     <p className="text-secondary-700 leading-relaxed mb-4">
-                      {review.comment}
+                      {review.review_text}
                     </p>
 
                     {/* Review Actions */}

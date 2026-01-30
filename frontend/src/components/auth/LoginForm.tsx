@@ -9,6 +9,7 @@ import {
   KeyRound,
   ChevronLeft
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../ui/Button';
 
@@ -38,6 +39,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
  * @param {Function} props.onSuccess - Optional callback when authentication succeeds
  */
 const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
+  const { t } = useTranslation();
   const { signInWithGoogle, signInWithEmail, signInWithPhone, signInWith2FA } = useAuth();
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [isLoading, setIsLoading] = useState(false);

@@ -55,14 +55,11 @@ const VendorReviewManagement: React.FC<VendorReviewManagementProps> = ({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [reviewsData, breakdownData] = await Promise.all([
-        vendorApi.getVendorReviews(vendorId, {
-          verified_only: filters.verified_only,
-          skip: 0,
-          limit: pagination.limit
-        }),
-        vendorApi.getRatingBreakdown(vendorId)
-      ]);
+      const reviewsData = await vendorApi.getVendorReviews(vendorId, {
+        verified_only: filters.verified_only,
+        offset: 0,
+        limit: pagination.limit
+      });
 
       // Apply client-side filters
       let filteredReviews = reviewsData.reviews;
@@ -72,12 +69,22 @@ const VendorReviewManagement: React.FC<VendorReviewManagementProps> = ({
       }
 
       setReviews(filteredReviews);
-      setRatingBreakdown(breakdownData);
+      
+      // Set rating breakdown from the reviews response
+      if (reviewsData.summary) {
+        setRatingBreakdown({
+          total_reviews: reviewsData.summary.total_reviews,
+          average_rating: reviewsData.summary.average_rating ? parseFloat(reviewsData.summary.average_rating) : undefined,
+          rating_distribution: reviewsData.summary.rating_distribution,
+          recent_reviews: [] // Not provided by backend
+        });
+      }
+      
       setPagination({
-        skip: reviewsData.skip,
+        skip: reviewsData.offset,
         limit: reviewsData.limit,
         total: reviewsData.total,
-        hasMore: reviewsData.has_more
+        hasMore: reviewsData.reviews.length === reviewsData.limit
       });
     } catch (error) {
       console.error('Failed to load review data:', error);
@@ -95,19 +102,19 @@ const VendorReviewManagement: React.FC<VendorReviewManagementProps> = ({
   const handleLoadMore = async () => {
     setLoading(true);
     try {
-      const nextSkip = pagination.skip + pagination.limit;
+      const nextOffset = pagination.skip + pagination.limit;
       const reviewsData = await vendorApi.getVendorReviews(vendorId, {
         verified_only: filters.verified_only,
-        skip: nextSkip,
+        offset: nextOffset,
         limit: pagination.limit
       });
 
       setReviews(prev => [...prev, ...reviewsData.reviews]);
       setPagination({
-        skip: reviewsData.skip,
+        skip: reviewsData.offset,
         limit: reviewsData.limit,
         total: reviewsData.total,
-        hasMore: reviewsData.has_more
+        hasMore: reviewsData.reviews.length === reviewsData.limit
       });
     } catch (error) {
       console.error('Failed to load more reviews:', error);
@@ -139,13 +146,13 @@ const VendorReviewManagement: React.FC<VendorReviewManagementProps> = ({
   const exportReviews = () => {
     // Create CSV content
     const csvContent = [
-      ['Date', 'Rating', 'Comment', 'Verified', 'Couple ID'].join(','),
+      ['Date', 'Rating', 'Comment', 'User Email', 'User ID'].join(','),
       ...reviews.map(review => [
         new Date(review.created_at).toLocaleDateString(),
         review.rating,
-        `"${review.comment.replace(/"/g, '""')}"`,
-        review.is_verified ? 'Yes' : 'No',
-        review.couple_id
+        `"${(review.review_text || '').replace(/"/g, '""')}"`,
+        review.user_email,
+        review.user_id
       ].join(','))
     ].join('\n');
 

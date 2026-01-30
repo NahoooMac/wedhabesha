@@ -3,6 +3,7 @@ const encryptionService = require('./encryptionService');
 const securityControls = require('./securityControls');
 const performanceOptimizer = require('./performanceOptimizer');
 const fileUploadService = require('./fileUploadService');
+const smsReminderService = require('./smsReminderService');
 const validator = require('validator');
 
 /**
@@ -527,6 +528,18 @@ class MessageService {
       );
 
       console.log(`💬 Message sent successfully: Thread ${threadId}, Sender ${senderId} (${senderType}), Attachments: ${uploadedAttachments.length}`);
+
+      // Schedule SMS reminder for the recipient if they have unread messages
+      try {
+        await this.scheduleUnreadSMSReminder(threadId, senderId, senderType, {
+          content: decryptedContent,
+          senderName: await this.getSenderName(senderId, senderType),
+          messageId: message.id
+        });
+      } catch (reminderError) {
+        console.error('⚠️ Failed to schedule SMS reminder:', reminderError);
+        // Don't fail the message send if reminder scheduling fails
+      }
 
       return {
         success: true,
@@ -1201,6 +1214,102 @@ class MessageService {
       maxMessageLength: this.maxMessageLength,
       maxMessagesPerPage: this.maxMessagesPerPage
     };
+  }
+
+  /**
+   * Schedule SMS reminder for unread messages
+   * @param {string} threadId - Thread ID
+   * @param {string} senderId - ID of the message sender
+   * @param {string} senderType - Type of sender (couple/vendor)
+   * @param {Object} messageInfo - Message information
+   */
+  async scheduleUnreadSMSReminder(threadId, senderId, senderType, messageInfo) {
+    try {
+      // Get thread participants
+      const threadQuery = `
+        SELECT couple_id, vendor_id, 
+               c.user_id as couple_user_id,
+               v.user_id as vendor_user_id
+        FROM message_threads mt
+        LEFT JOIN couples c ON mt.couple_id = c.id
+        LEFT JOIN vendors v ON mt.vendor_id = v.id
+        WHERE mt.id = ?
+      `;
+      
+      const threadResult = await query(threadQuery, [threadId]);
+      if (threadResult.rows.length === 0) return;
+      
+      const thread = threadResult.rows[0];
+      
+      // Determine recipient (opposite of sender)
+      let recipientUserId = null;
+      
+      if (senderType.toLowerCase() === 'couple') {
+        // Message from couple to vendor
+        recipientUserId = thread.vendor_user_id;
+      } else if (senderType.toLowerCase() === 'vendor') {
+        // Message from vendor to couple
+        recipientUserId = thread.couple_user_id;
+      }
+      
+      if (recipientUserId) {
+        // Schedule SMS reminder for the recipient
+        await smsReminderService.scheduleUnreadReminder(
+          recipientUserId.toString(),
+          threadId,
+          messageInfo
+        );
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to schedule unread SMS reminder:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get sender name for SMS notifications
+   * @param {string} senderId - Sender ID
+   * @param {string} senderType - Sender type (couple/vendor)
+   */
+  async getSenderName(senderId, senderType) {
+    try {
+      if (senderType.toLowerCase() === 'couple') {
+        const coupleQuery = `
+          SELECT CONCAT(partner1_name, ' & ', partner2_name) as name
+          FROM couples 
+          WHERE id = ?
+        `;
+        const result = await query(coupleQuery, [senderId]);
+        return result.rows[0]?.name || 'Couple';
+      } else if (senderType.toLowerCase() === 'vendor') {
+        const vendorQuery = `
+          SELECT business_name as name
+          FROM vendors 
+          WHERE id = ?
+        `;
+        const result = await query(vendorQuery, [senderId]);
+        return result.rows[0]?.name || 'Vendor';
+      }
+      
+      return 'Someone';
+    } catch (error) {
+      console.error('❌ Failed to get sender name:', error);
+      return 'Someone';
+    }
+  }
+
+  /**
+   * Cancel SMS reminder when messages are read
+   * @param {string} threadId - Thread ID
+   * @param {string} userId - User ID who read the messages
+   */
+  async cancelUnreadSMSReminder(threadId, userId) {
+    try {
+      await smsReminderService.cancelUnreadReminder(userId, threadId);
+    } catch (error) {
+      console.error('❌ Failed to cancel SMS reminder:', error);
+    }
   }
 }
 

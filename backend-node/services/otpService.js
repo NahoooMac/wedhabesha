@@ -481,6 +481,81 @@ class OTPService {
     return descriptions[eventType] || eventType;
   }
 
+  // Store OTP for phone verification (SQLite compatible)
+  async storeOTP(phone, otpCode, ttlSeconds = 300) {
+    try {
+      const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+      
+      // Clean up any existing OTPs for this phone
+      await query(`
+        DELETE FROM otp_codes 
+        WHERE email = ? AND otp_type = 'EMAIL_VERIFICATION'
+      `, [phone]);
+
+      // Store new OTP (using EMAIL_VERIFICATION type since PHONE_VERIFICATION is not allowed)
+      await query(`
+        INSERT INTO otp_codes (email, otp_code, otp_type, expires_at, created_at)
+        VALUES (?, ?, 'EMAIL_VERIFICATION', ?, datetime('now'))
+      `, [phone, otpCode, expiresAt.toISOString()]);
+
+      return {
+        success: true,
+        expiresAt: expiresAt.toISOString()
+      };
+
+    } catch (error) {
+      console.error('Store OTP error:', error);
+      return {
+        success: false,
+        error: 'Failed to store OTP'
+      };
+    }
+  }
+
+  // Verify OTP for phone verification (SQLite compatible)
+  async verifyOTP(phone, otpCode) {
+    try {
+      const otpResult = await query(`
+        SELECT * FROM otp_codes 
+        WHERE email = ? 
+        AND otp_code = ? 
+        AND otp_type = 'EMAIL_VERIFICATION'
+        AND is_used = 0 
+        AND expires_at > datetime('now')
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `, [phone, otpCode]);
+
+      if (otpResult.rows.length === 0) {
+        return {
+          success: false,
+          error: 'Invalid or expired verification code'
+        };
+      }
+
+      const otp = otpResult.rows[0];
+
+      // Mark OTP as used
+      await query(`
+        UPDATE otp_codes 
+        SET is_used = 1, used_at = datetime('now') 
+        WHERE id = ?
+      `, [otp.id]);
+
+      return {
+        success: true,
+        message: 'OTP verified successfully'
+      };
+
+    } catch (error) {
+      console.error('Verify OTP error:', error);
+      return {
+        success: false,
+        error: 'Failed to verify OTP'
+      };
+    }
+  }
+
   // Start cleanup interval for expired OTPs
   startCleanupInterval() {
     // Clean up expired OTPs every hour

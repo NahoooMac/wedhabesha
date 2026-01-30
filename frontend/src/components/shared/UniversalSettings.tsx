@@ -65,7 +65,7 @@ const fetchUserProfile = async (userType: string): Promise<UserProfile> => {
 
 const changePassword = async (data: PasswordChangeData, userType: string) => {
   const endpoint = userType === 'ADMIN' ? '/api/admin/change-password' : 
-                   userType === 'VENDOR' ? '/api/vendor/change-password' :
+                   userType === 'VENDOR' ? '/api/v1/vendors/change-password' :
                    userType === 'STAFF' ? '/api/staff/change-password' :
                    '/api/user/change-password';
                    

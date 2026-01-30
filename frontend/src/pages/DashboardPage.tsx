@@ -13,6 +13,8 @@ import ProfileSettings from '../components/profile/ProfileSettings';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import UnifiedAnalyticsDashboard from '../components/analytics/UnifiedAnalyticsDashboard';
 import MiniAnalyticsDashboard from '../components/analytics/MiniAnalyticsDashboard';
+import NotificationBadge from '../components/shared/NotificationBadge';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { AnalyticsProvider } from '../contexts/AnalyticsContext';
 import { weddingApi, WeddingCreateResponse } from '../lib/api';
 import { Sun, Moon } from 'lucide-react';
@@ -109,6 +111,9 @@ const DashboardPage: React.FC = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  // Unread messages hook
+  const { totalUnread } = useUnreadMessages(user?.id?.toString() || '');
 
   // Dark mode effect
   useEffect(() => {
@@ -226,6 +231,7 @@ const DashboardPage: React.FC = () => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             const isDisabled = !hasWedding && item.id !== 'overview' && item.id !== 'wedding' && item.id !== 'settings';
+            const showNotificationBadge = item.id === 'communication' && totalUnread > 0;
             
             return (
               <button
@@ -237,7 +243,7 @@ const DashboardPage: React.FC = () => {
                   }
                 }}
                 disabled={isDisabled}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all ${
+                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all relative ${
                   isActive
                     ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 shadow-sm'
                     : isDisabled
@@ -245,7 +251,14 @@ const DashboardPage: React.FC = () => {
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <Icon className="w-5 h-5 mr-3" />
+                <div className="relative">
+                  <Icon className="w-5 h-5 mr-3" />
+                  {showNotificationBadge && (
+                    <div className="absolute -top-1 -right-1">
+                      <NotificationBadge count={totalUnread} size="sm" />
+                    </div>
+                  )}
+                </div>
                 <span>{item.label}</span>
                 {isActive && (
                   <div className="ml-auto w-1.5 h-1.5 rounded-full bg-rose-600 dark:bg-rose-400"></div>

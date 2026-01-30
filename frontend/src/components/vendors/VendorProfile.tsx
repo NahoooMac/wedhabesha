@@ -10,11 +10,15 @@ import {
 import { VendorResponse, VendorCategoryResponse, VendorCategory, vendorApi } from '../../lib/api';
 
 // --- Types ---
-interface ServicePackage {
+interface UIServicePackage {
   id?: number;
   name: string;
   description: string;
   price: number;
+  startingPrice?: string;
+  photo?: string;
+  location?: string;
+  phone?: string;
   duration?: string;
   features: string[];
 }
@@ -31,6 +35,8 @@ interface VendorProfileFormData {
   category: VendorCategory;
   location: string;
   description: string;
+  starting_price?: string;
+  why_choose_us?: string[];
   phone?: string;
   email?: string;
   website?: string;
@@ -44,7 +50,7 @@ interface VendorProfileFormData {
   service_area?: string;
   business_photos?: string | string[];
   portfolio_photos?: string | string[];
-  service_packages: ServicePackage[];
+  service_packages: UIServicePackage[];
   business_hours: BusinessHours[];
 }
 
@@ -58,9 +64,9 @@ const FormSection = ({ title, children, className = "" }: { title?: string, chil
 );
 
 const InputField = ({ 
-  label, error, register, name, placeholder, type = "text", required = false, disabled = false, className = "" 
+  label, error, register, name, placeholder, type = "text", required = false, disabled = false, className = "", step 
 }: { 
-  label: string, error?: string, register: any, name: string, placeholder?: string, type?: string, required?: boolean, disabled?: boolean, className?: string 
+  label: string, error?: string, register: any, name: string, placeholder?: string, type?: string, required?: boolean, disabled?: boolean, className?: string, step?: string 
 }) => (
   <div className={`space-y-2 ${className}`}>
     <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -68,6 +74,7 @@ const InputField = ({
     </label>
     <input
       type={type}
+      step={step}
       disabled={disabled}
       {...register(name, { required: required ? 'Required' : false })}
       className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-rose-500 outline-none transition-all disabled:opacity-60"
@@ -118,21 +125,52 @@ const getImageUrl = (photo: string) => {
 const BasicInfoTab = ({ editing, register, errors, categories, vendor }: any) => {
   if (!editing) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-        {/* Custom ViewField for Business Name to include Verified icon */}
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Business Name</label>
-          <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl text-gray-800 dark:text-gray-200 font-medium">
-            <Building2 className="w-4 h-4 text-gray-400" />
-            <span>{vendor?.business_name || <span className="text-gray-400 italic">Not set</span>}</span>
-            {vendor?.is_verified && <Verified className="w-4 h-4 text-blue-500" />}
+      <div className="space-y-6 animate-fade-in">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Custom ViewField for Business Name to include Verified icon */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Business Name</label>
+            <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl text-gray-800 dark:text-gray-200 font-medium">
+              <Building2 className="w-4 h-4 text-gray-400" />
+              <span>{vendor?.business_name || <span className="text-gray-400 italic">Not set</span>}</span>
+              {vendor?.is_verified && <Verified className="w-4 h-4 text-blue-500" />}
+            </div>
           </div>
+          
+          <ViewField label="Category" value={categories.find((c: any) => c.value === vendor?.category)?.label || vendor?.category} icon={Tag} />
         </div>
-        
-        <ViewField label="Category" value={categories.find((c: any) => c.value === vendor?.category)?.label || vendor?.category} icon={Tag} />
+
+        {/* Starting Price */}
+        {vendor?.starting_price && (
+          <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Package className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+              <span className="text-sm font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider">Starting Price</span>
+            </div>
+            <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">
+              ETB {vendor.starting_price}
+            </div>
+          </div>
+        )}
+
         <div className="md:col-span-2">
            <ViewField label="Description" value={vendor?.description} icon={FileText} />
         </div>
+
+        {/* Why Choose Us */}
+        {vendor?.why_choose_us && vendor.why_choose_us.some((reason: string) => reason.trim()) && (
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Why Choose Us</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {vendor.why_choose_us.filter((reason: string) => reason.trim()).map((reason: string, index: number) => (
+                <div key={index} className="flex items-start gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-emerald-800 dark:text-emerald-200 font-medium">{reason}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -148,7 +186,35 @@ const BasicInfoTab = ({ editing, register, errors, categories, vendor }: any) =>
           </select>
         </div>
       </div>
+
+      {/* Starting Price */}
+      <InputField 
+        label="Starting Price (ETB)" 
+        name="starting_price" 
+        register={register} 
+        placeholder="e.g., 25,000"
+        error={errors.starting_price?.message} 
+      />
+
       <TextAreaField label="Description" name="description" register={register} error={errors.description?.message} required />
+
+      {/* Why Choose Us */}
+      <div className="space-y-4">
+        <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+          Why Choose Us? <span className="text-gray-500 font-normal">(4 key reasons)</span>
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[0, 1, 2, 3].map((index) => (
+            <InputField
+              key={index}
+              label={`Reason ${index + 1}`}
+              name={`why_choose_us.${index}`}
+              register={register}
+              placeholder={`e.g., "10+ years of experience"`}
+            />
+          ))}
+        </div>
+      </div>
     </FormSection>
   );
 };
@@ -156,12 +222,82 @@ const BasicInfoTab = ({ editing, register, errors, categories, vendor }: any) =>
 const ContactTab = ({ editing, register, vendor }: any) => {
   if (!editing) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-        <ViewField label="Phone" value={vendor?.phone} icon={Phone} />
-        <ViewField label="Email" value={vendor?.email} icon={Mail} />
+      <div className="space-y-6 animate-fade-in">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <ViewField label="Phone" value={vendor?.phone} icon={Phone} />
+          <ViewField label="Email" value={vendor?.email} icon={Mail} />
+        </div>
         <div className="md:col-span-2">
           <ViewField label="Website" value={vendor?.website} icon={Globe} />
         </div>
+        
+        {/* Contact Options */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+          <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+            <Phone className="w-4 h-4" />
+            Contact Options
+          </h4>
+          <div className="space-y-2">
+            {vendor?.phone && (
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm text-blue-700 dark:text-blue-300">
+                  Customers can call you at <strong>{vendor.phone}</strong>
+                </span>
+              </div>
+            )}
+            {vendor?.email && (
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm text-blue-700 dark:text-blue-300">
+                  Customers can email you at <strong>{vendor.email}</strong>
+                </span>
+              </div>
+            )}
+            {vendor?.website && (
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm text-blue-700 dark:text-blue-300">
+                  Customers can visit your website
+                </span>
+              </div>
+            )}
+            {!vendor?.phone && !vendor?.email && !vendor?.website && (
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                <span className="text-sm text-amber-700 dark:text-amber-300">
+                  Add contact information to help customers reach you
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Primary Contact Highlight */}
+        {vendor?.phone && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-green-800 dark:text-green-200 mb-1 flex items-center gap-2">
+                  <Phone className="w-5 h-5" />
+                  Primary Contact Number
+                </h4>
+                <p className="text-green-700 dark:text-green-300 text-sm mb-3">
+                  This number will be prominently displayed to potential customers
+                </p>
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {vendor.phone}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-2">
+                  <Phone className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
+                <span className="text-xs text-green-600 dark:text-green-400 font-medium">Available</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -173,6 +309,17 @@ const ContactTab = ({ editing, register, vendor }: any) => {
         <div className="md:col-span-2">
           <InputField label="Website" name="website" type="url" register={register} placeholder="https://..." />
         </div>
+      </div>
+      
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+        <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2 flex items-center gap-2">
+          <Phone className="w-4 h-4" />
+          Contact Preferences
+        </h4>
+        <p className="text-sm text-blue-700 dark:text-blue-300">
+          Your phone number will be displayed to potential customers as a primary contact method. 
+          Make sure it's a number you actively monitor for business inquiries.
+        </p>
       </div>
     </FormSection>
   );
@@ -189,17 +336,55 @@ const AddressTab = ({ editing, register, vendor }: any) => {
         <ViewField label="State/Region" value={vendor?.state} />
         <ViewField label="Postal Code" value={vendor?.postal_code} />
         <ViewField label="Country" value={vendor?.country} />
+        <div className="md:col-span-2">
+          <ViewField label="Service Area" value={vendor?.service_area} />
+        </div>
+        {(vendor?.latitude && vendor?.longitude) && (
+          <div className="md:col-span-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Map Location</label>
+            <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl text-gray-800 dark:text-gray-200 font-medium">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-gray-400" />
+                <span>Lat: {vendor.latitude}, Lng: {vendor.longitude}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
   return (
     <FormSection>
-      <InputField label="Street Address" name="street_address" register={register} className="md:col-span-2" />
+      <div className="md:col-span-2">
+        <InputField label="Street Address" name="street_address" register={register} placeholder="e.g., Bole Road, near Atlas Hotel" />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <InputField label="City" name="city" register={register} />
-        <InputField label="State/Region" name="state" register={register} />
-        <InputField label="Postal Code" name="postal_code" register={register} />
-        <InputField label="Country" name="country" register={register} />
+        <InputField label="City" name="city" register={register} placeholder="e.g., Addis Ababa" />
+        <InputField label="State/Region" name="state" register={register} placeholder="e.g., Addis Ababa" />
+        <InputField label="Postal Code" name="postal_code" register={register} placeholder="e.g., 1000" />
+        <InputField label="Country" name="country" register={register} placeholder="e.g., Ethiopia" />
+      </div>
+      <div className="md:col-span-2">
+        <InputField label="Service Area" name="service_area" register={register} placeholder="e.g., Addis Ababa and surrounding areas" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <InputField label="Latitude" name="latitude" type="number" step="any" register={register} placeholder="e.g., 9.0320" />
+        <InputField label="Longitude" name="longitude" type="number" step="any" register={register} placeholder="e.g., 38.7469" />
+      </div>
+      <div className="md:col-span-2">
+        <InputField label="Map Address" name="map_address" register={register} placeholder="Full address for map display (optional)" />
+      </div>
+      
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+        <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2 flex items-center gap-2">
+          <MapPin className="w-4 h-4" />
+          Location Tips
+        </h4>
+        <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+          <li>• Provide accurate address information to help customers find you</li>
+          <li>• Service area describes where you provide services</li>
+          <li>• Latitude/longitude coordinates improve map accuracy (optional)</li>
+        </ul>
       </div>
     </FormSection>
   );
@@ -216,10 +401,47 @@ const ServicesTab = ({ editing, register, control, vendor }: any) => {
     return (
       <div className="grid md:grid-cols-2 gap-6 animate-fade-in">
         {vendor.service_packages.map((pkg: any, idx: number) => (
-          <div key={idx} className="p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
-            <h4 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{pkg.name}</h4>
-            <p className="text-rose-600 font-bold text-xl mb-4">ETB {pkg.price?.toLocaleString()}</p>
-            <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">{pkg.description}</p>
+          <div key={idx} className="p-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow">
+            {/* Package Photo */}
+            {pkg.photo && (
+              <div className="w-full h-48 bg-gray-100 dark:bg-gray-700 rounded-lg mb-4 overflow-hidden">
+                <img 
+                  src={pkg.photo} 
+                  alt={pkg.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            
+            <div className="space-y-3">
+              <h4 className="font-bold text-lg text-gray-900 dark:text-white">{pkg.name}</h4>
+              
+              {/* Price Display */}
+              <div className="flex items-center gap-2">
+                <span className="text-rose-600 font-bold text-xl">
+                  ETB {(pkg.price || pkg.startingPrice || 0).toLocaleString()}
+                </span>
+                <span className="text-sm text-gray-500">starting from</span>
+              </div>
+              
+              <p className="text-gray-600 dark:text-gray-300 text-sm">{pkg.description}</p>
+              
+              {/* Contact Info */}
+              <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-700">
+                {pkg.location && (
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    <span>{pkg.location}</span>
+                  </div>
+                )}
+                {pkg.phone && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="w-3 h-3" />
+                    <span>{pkg.phone}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -229,8 +451,15 @@ const ServicesTab = ({ editing, register, control, vendor }: any) => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Packages</h3>
-        <Button type="button" onClick={() => append({ name: '', price: 0, description: '' })} size="sm" className="bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Service Packages</h3>
+        <Button type="button" onClick={() => append({ 
+          name: '', 
+          price: 0, 
+          description: '', 
+          photo: '', 
+          location: '', 
+          phone: '' 
+        })} size="sm" className="bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400">
           <Plus className="w-4 h-4 mr-2" /> Add Package
         </Button>
       </div>
@@ -242,8 +471,16 @@ const ServicesTab = ({ editing, register, control, vendor }: any) => {
             </button>
             <div className="space-y-4">
               <InputField label="Package Name" name={`service_packages.${index}.name`} register={register} required />
-              <InputField label="Price (ETB)" name={`service_packages.${index}.price`} type="number" register={register} />
+              <InputField label="Starting Price (ETB)" name={`service_packages.${index}.price`} type="number" register={register} />
               <TextAreaField label="Description" name={`service_packages.${index}.description`} register={register} rows={2} />
+              
+              {/* Additional Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InputField label="Service Location" name={`service_packages.${index}.location`} register={register} placeholder="e.g., Addis Ababa" />
+                <InputField label="Contact Phone" name={`service_packages.${index}.phone`} register={register} placeholder="+251..." />
+              </div>
+              
+              <InputField label="Package Photo URL" name={`service_packages.${index}.photo`} register={register} placeholder="https://..." />
             </div>
           </div>
         ))}
@@ -390,6 +627,8 @@ const VendorProfile: React.FC = () => {
 
     reset({
       ...data,
+      starting_price: (data as any).starting_price || '',
+      why_choose_us: (data as any).why_choose_us || ['', '', '', ''],
       business_hours: data.business_hours?.length ? data.business_hours : defaultHours,
       business_photos: Array.isArray(data.business_photos) ? data.business_photos.join('\n') : '',
       portfolio_photos: Array.isArray(data.portfolio_photos) ? data.portfolio_photos.join('\n') : '',
@@ -401,6 +640,12 @@ const VendorProfile: React.FC = () => {
       state: data.state || '',
       postal_code: data.postal_code || '',
       country: data.country || 'Ethiopia',
+      service_packages: data.service_packages?.map(pkg => ({
+        ...pkg,
+        location: (pkg as any).location || data.location || '',
+        phone: (pkg as any).phone || data.phone || '',
+        photo: (pkg as any).photo || ''
+      })) || []
     });
   };
 
@@ -442,36 +687,96 @@ const VendorProfile: React.FC = () => {
     { id: 'address', label: 'Location', icon: MapPin },
   ];
 
+  // Get the first business photo for banner background
+  const bannerImage = vendor?.business_photos && vendor.business_photos.length > 0 
+    ? getImageUrl(vendor.business_photos[0]) 
+    : null;
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 pt-24">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-20 z-30 shadow-sm transition-all">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                Business Profile
-                {vendor?.is_verified && <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Verified</span>}
-              </h1>
-              <p className="text-sm text-gray-500">Manage your presence on WedHabesha</p>
-            </div>
-            <div className="flex gap-3">
-              {!editing ? (
-                <Button onClick={() => setEditing(true)} className="bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-500/20">
-                  <Edit3 className="w-4 h-4 mr-2" /> Edit Profile
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" onClick={() => { setEditing(false); if(vendor) initializeForm(vendor); }}>Cancel</Button>
-                  <Button onClick={handleSubmit(onSubmit)} loading={saving} className="bg-green-600 hover:bg-green-700 text-white">
-                    <Save className="w-4 h-4 mr-2" /> Save Changes
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
+      {/* Banner Background */}
+      <div className="relative h-64 overflow-hidden">
+        {bannerImage ? (
+          <>
+            {/* Blurred background image */}
+            <div 
+              className="absolute inset-0 bg-cover bg-center transform scale-110 filter blur-lg"
+              style={{ backgroundImage: `url(${bannerImage})` }}
+            />
+            {/* Overlay for better text readability */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/50 to-black/60" />
+          </>
+        ) : (
+          /* Fallback gradient background */
+          <div className="absolute inset-0 bg-gradient-to-br from-rose-600 via-purple-600 to-indigo-600" />
+        )}
+        
+        {/* Banner content */}
+        <div className="relative z-10 h-full flex items-end">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 w-full">
+            <div className="flex items-end gap-6">
+              {/* Profile Image */}
+              <div className="w-24 h-24 md:w-32 md:h-32 rounded-2xl bg-white p-1 shadow-2xl flex-shrink-0">
+                <div className="w-full h-full bg-gradient-to-br from-rose-100 to-purple-100 rounded-xl flex items-center justify-center text-2xl md:text-3xl font-bold text-rose-600 overflow-hidden">
+                  {bannerImage ? (
+                    <img src={bannerImage} alt="Profile" className="w-full h-full object-cover rounded-xl" />
+                  ) : (
+                    vendor?.business_name?.charAt(0).toUpperCase() || 'V'
+                  )}
+                </div>
+              </div>
+              
+              {/* Business Info */}
+              <div className="flex-1 text-white pb-2">
+                <div className="flex items-center gap-3 mb-2">
+                  <h1 className="text-2xl md:text-3xl font-bold">
+                    {vendor?.business_name || 'Your Business'}
+                  </h1>
+                  {vendor?.is_verified && (
+                    <span className="bg-blue-500/20 backdrop-blur-md border border-blue-400/30 px-3 py-1 rounded-full text-xs font-medium text-blue-200 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" /> Verified
+                    </span>
+                  )}
+                </div>
+                <p className="text-white/80 text-sm md:text-base">
+                  Manage your presence on WedHabesha
+                </p>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-3 pb-2">
+                {!editing ? (
+                  <Button onClick={() => setEditing(true)} className="bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30 shadow-lg">
+                    <Edit3 className="w-4 h-4 mr-2" /> Edit Profile
                   </Button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => { setEditing(false); if(vendor) initializeForm(vendor); }}
+                      className="bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30"
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleSubmit(onSubmit)} 
+                      loading={saving} 
+                      className="bg-green-600 hover:bg-green-700 text-white shadow-lg"
+                    >
+                      <Save className="w-4 h-4 mr-2" /> Save Changes
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-          
-          <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-20 z-30 shadow-sm -mt-8 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-4">
+          <div className="flex gap-1 overflow-x-auto no-scrollbar">
             {tabs.map(tab => (
               <button
                 key={tab.id}

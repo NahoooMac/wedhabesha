@@ -221,4 +221,17 @@ export const messagingApi = {
   getUnreadCount: async (): Promise<{ success: boolean; data: { count: number } }> => {
     return apiClient.get('/api/v1/messaging/unread-count');
   },
+
+  /**
+   * Get unread message counts by thread
+   */
+  getUnreadCounts: async (): Promise<{ 
+    success: boolean; 
+    data: { 
+      totalUnread: number; 
+      threadCounts: Record<string, number> 
+    } 
+  }> => {
+    return apiClient.get('/api/v1/messaging/unread-counts');
+  },
 };

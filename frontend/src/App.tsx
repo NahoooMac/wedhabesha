@@ -6,6 +6,7 @@ import { queryClient } from './lib/queryClient';
 import { cacheInvalidationService } from './lib/cacheInvalidation';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { createLazyRoute } from './lib/lazyLoading';
 
 // Components
@@ -15,6 +16,7 @@ import OfflineBanner from './components/ui/OfflineBanner';
 
 // Lazy-loaded pages for better performance
 const HomePage = createLazyRoute(() => import('./pages/HomePage'));
+const AboutPage = createLazyRoute(() => import('./pages/AboutPage'));
 const LoginPage = createLazyRoute(() => import('./pages/LoginPage'));
 const RegisterPage = createLazyRoute(() => import('./pages/RegisterPage'));
 const VendorDirectoryPage = createLazyRoute(() => import('./pages/VendorDirectoryPage'));
@@ -26,6 +28,7 @@ const StaffDashboardPage = createLazyRoute(() => import('./pages/StaffDashboardP
 const StaffCheckInPage = createLazyRoute(() => import('./pages/StaffCheckInPage'));
 const AdminDashboardPage = createLazyRoute(() => import('./pages/AdminDashboardPage'));
 const PublicInvitationPage = createLazyRoute(() => import('./pages/PublicInvitationPage'));
+const PricingPage = createLazyRoute(() => import('./pages/PricingPage'));
 const ErrorPage = createLazyRoute(() => import('./pages/ErrorPage'));
 
 function App() {
@@ -37,13 +40,16 @@ function App() {
   return (
     <ErrorBoundary level="global">
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <AuthProvider>
-            <Router>
-              <OfflineBanner />
-              <div className="min-h-screen bg-white">
+        <LanguageProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <Router>
+                <OfflineBanner />
+                <div className="min-h-screen bg-white">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
+                  <Route path="/about" element={<AboutPage />} />
+                  <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/vendors" element={<VendorDirectoryPage />} />
@@ -109,6 +115,7 @@ function App() {
             </Router>
           </AuthProvider>
         </ThemeProvider>
+        </LanguageProvider>
         {/* Only show dev tools in development */}
         {process.env.NODE_ENV === 'development' && (
           <ReactQueryDevtools initialIsOpen={false} />

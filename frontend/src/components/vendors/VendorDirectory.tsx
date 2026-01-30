@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Grid, List, PackageOpen } from 'lucide-react';
 import { Button } from '../ui/Button';
 import VendorSearch from './VendorSearch';
@@ -9,10 +10,11 @@ import {
   VendorResponse, 
   VendorCategoryResponse,
   VendorCategory,
+  VendorSearchParams,
   vendorApi 
 } from '../../lib/api';
 
-interface VendorSearchParams {
+interface LocalVendorSearchParams {
   search?: string;
   category?: VendorCategory;
   location?: string;
@@ -21,10 +23,13 @@ interface VendorSearchParams {
 }
 
 const VendorDirectory: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  
   const [vendors, setVendors] = useState<VendorResponse[]>([]);
   const [categories, setCategories] = useState<VendorCategoryResponse[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<VendorSearchParams>({});
+  const [vendorSearchParams, setVendorSearchParams] = useState<LocalVendorSearchParams>({});
   const [verificationFilter, setVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
   const [pagination, setPagination] = useState({
     skip: 0,
@@ -41,10 +46,114 @@ const VendorDirectory: React.FC = () => {
   // View mode
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
+  // Helper function to parse URL parameters
+  const parseUrlParams = (): LocalVendorSearchParams => {
+    const params: LocalVendorSearchParams = {};
+    
+    const category = searchParams.get('category');
+    const search = searchParams.get('search');
+    const location = searchParams.get('location');
+    const minRating = searchParams.get('min_rating');
+    const verifiedOnly = searchParams.get('verified_only');
+    
+    if (category) {
+      // Normalize category to match VendorCategory enum
+      const normalizedCategory = category.toLowerCase().trim();
+      
+      // Map common variations to correct category names
+      const categoryMap: Record<string, VendorCategory> = {
+        'venue': 'venue',
+        'venues': 'venue',
+        'catering': 'catering',
+        'caterer': 'catering',
+        'photography': 'photography',
+        'photographer': 'photography',
+        'photo': 'photography',
+        'videography': 'videography',
+        'videographer': 'videography',
+        'video': 'videography',
+        'music': 'music',
+        'musician': 'music',
+        'dj': 'music',
+        'band': 'music',
+        'flowers': 'flowers',
+        'florist': 'flowers',
+        'floral': 'flowers',
+        'decoration': 'decoration',
+        'decorator': 'decoration',
+        'decor': 'decoration',
+        'transportation': 'transportation',
+        'transport': 'transportation',
+        'car': 'transportation',
+        'makeup': 'makeup',
+        'makeupartist': 'makeup',
+        'beauty': 'makeup',
+        'dress': 'dress',
+        'dresses': 'dress',
+        'gown': 'dress',
+        'jewelry': 'jewelry',
+        'jewellery': 'jewelry',
+        'jeweler': 'jewelry',
+        'invitations': 'invitations',
+        'invitation': 'invitations',
+        'cards': 'invitations',
+        'other': 'other'
+      };
+      
+      const mappedCategory = categoryMap[normalizedCategory];
+      if (mappedCategory) {
+        params.category = mappedCategory;
+      }
+    }
+    
+    if (search) params.search = search;
+    if (location) params.location = location;
+    if (minRating) params.min_rating = parseInt(minRating, 10);
+    if (verifiedOnly) params.verified_only = verifiedOnly === 'true';
+    
+    return params;
+  };
+
+  // Helper function to update URL parameters
+  const updateUrlParams = (params: LocalVendorSearchParams) => {
+    const newSearchParams = new URLSearchParams();
+    
+    if (params.category) newSearchParams.set('category', params.category);
+    if (params.search) newSearchParams.set('search', params.search);
+    if (params.location) newSearchParams.set('location', params.location);
+    if (params.min_rating) newSearchParams.set('min_rating', params.min_rating.toString());
+    if (params.verified_only !== undefined) newSearchParams.set('verified_only', params.verified_only.toString());
+    
+    // Update URL without causing a page reload
+    setSearchParams(newSearchParams, { replace: true });
+  };
+
   useEffect(() => {
     loadCategories();
-    loadVendors({});
+    
+    // Parse initial URL parameters and load vendors
+    const initialParams = parseUrlParams();
+    setVendorSearchParams(initialParams);
+    
+    // Set verification filter based on URL
+    const verifiedOnly = searchParams.get('verified_only');
+    if (verifiedOnly === 'true') {
+      setVerificationFilter('verified');
+    } else if (verifiedOnly === 'false') {
+      setVerificationFilter('unverified');
+    } else {
+      setVerificationFilter('all');
+    }
+    
+    loadVendors(initialParams);
   }, []);
+
+  // Watch for URL changes (e.g., browser back/forward)
+  useEffect(() => {
+    const urlParams = parseUrlParams();
+    setVendorSearchParams(urlParams);
+    loadVendors(urlParams);
+  }, [searchParams]);
 
   const loadCategories = async () => {
     try {
@@ -55,7 +164,7 @@ const VendorDirectory: React.FC = () => {
     }
   };
 
-  const loadVendors = async (params: VendorSearchParams, skip = 0) => {
+  const loadVendors = async (params: LocalVendorSearchParams, skip = 0) => {
     setLoading(true);
     try {
       const searchData = await vendorApi.searchVendors({
@@ -83,29 +192,33 @@ const VendorDirectory: React.FC = () => {
     }
   };
 
-  const handleSearch = (params: VendorSearchParams) => {
+  const handleSearch = (params: LocalVendorSearchParams) => {
     // Apply verification filter
     const finalParams = {
       ...params,
       verified_only: verificationFilter === 'verified' ? true : verificationFilter === 'unverified' ? false : undefined
     };
-    setSearchParams(finalParams);
+    
+    setVendorSearchParams(finalParams);
+    updateUrlParams(finalParams);
     loadVendors(finalParams, 0);
   };
 
   const handleVerificationFilterChange = (filter: 'all' | 'verified' | 'unverified') => {
     setVerificationFilter(filter);
     const finalParams = {
-      ...searchParams,
+      ...vendorSearchParams,
       verified_only: filter === 'verified' ? true : filter === 'unverified' ? false : undefined
     };
-    setSearchParams(finalParams);
+    
+    setVendorSearchParams(finalParams);
+    updateUrlParams(finalParams);
     loadVendors(finalParams, 0);
   };
 
   const handleLoadMore = () => {
     const nextSkip = pagination.skip + pagination.limit;
-    loadVendors(searchParams, nextSkip);
+    loadVendors(vendorSearchParams, nextSkip);
   };
 
   const handleViewProfile = (vendor: VendorResponse) => {
@@ -144,6 +257,7 @@ const VendorDirectory: React.FC = () => {
           onSearch={handleSearch}
           categories={categories}
           loading={loading}
+          initialValues={vendorSearchParams}
         />
       </div>
 
@@ -274,7 +388,12 @@ const VendorDirectory: React.FC = () => {
             We couldn't find any vendors matching your specific criteria. Try adjusting your filters or search for something else.
           </p>
           <Button 
-            onClick={() => handleSearch({})}
+            onClick={() => {
+              setVendorSearchParams({});
+              setVerificationFilter('all');
+              updateUrlParams({});
+              handleSearch({});
+            }}
             className="h-12 px-8 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-lg shadow-rose-500/25"
           >
             Clear All Filters
@@ -287,7 +406,6 @@ const VendorDirectory: React.FC = () => {
         vendor={selectedVendor!}
         isOpen={showProfileModal && selectedVendor !== null}
         onClose={() => setShowProfileModal(false)}
-        onContact={handleContact}
       />
 
       <ContactVendorModal

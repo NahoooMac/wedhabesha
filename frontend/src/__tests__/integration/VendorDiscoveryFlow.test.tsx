@@ -260,20 +260,6 @@ describe('Vendor Discovery and Lead Generation Flow', () => {
       average_rating: 5.0,
     });
 
-    // Mock rating breakdown
-    mockVendorApi.getRatingBreakdown.mockResolvedValue({
-      total_reviews: 10,
-      average_rating: 4.8,
-      rating_distribution: {
-        5: 8,
-        4: 2,
-        3: 0,
-        2: 0,
-        1: 0,
-      },
-      recent_reviews: [],
-    });
-
     // Mock lead creation
     mockVendorApi.contactVendor.mockResolvedValue({
       id: 1,

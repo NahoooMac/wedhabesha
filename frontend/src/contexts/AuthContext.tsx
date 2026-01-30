@@ -26,6 +26,28 @@ export const useAuth = () => {
   return context;
 };
 
+// Cookie utility functions
+const setCookie = (name: string, value: string, days: number = 7) => {
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;secure;samesite=strict`;
+};
+
+const getCookie = (name: string): string | null => {
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+  }
+  return null;
+};
+
+const deleteCookie = (name: string) => {
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+};
+
 interface AuthProviderProps {
   children: React.ReactNode;
 }
@@ -71,17 +93,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
           }
         } else {
-          // Check for JWT token in localStorage (traditional auth)
-          const jwtToken = localStorage.getItem('jwt_token');
+          // Check for JWT token in localStorage and cookies (traditional auth)
+          const jwtToken = localStorage.getItem('jwt_token') || getCookie('jwt_token');
           if (jwtToken) {
             try {
               const userData = await apiClient.get<User>('/api/v1/auth/me');
               if (isMounted) {
                 setUser(userData);
+                // Ensure token is in both localStorage and cookie
+                localStorage.setItem('jwt_token', jwtToken);
+                setCookie('jwt_token', jwtToken, 7); // 7 days
               }
             } catch (error) {
               console.error('Failed to get user data:', error);
               localStorage.removeItem('jwt_token');
+              deleteCookie('jwt_token');
               if (isMounted) {
                 setUser(null);
               }
@@ -156,6 +182,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // If no 2FA required, store token and set user
       localStorage.setItem('jwt_token', response.access_token);
+      setCookie('jwt_token', response.access_token, 7); // Store in cookie for 7 days
+      setCookie('user_data', JSON.stringify(response.user), 7); // Store user data in cookie
       setUser(response.user);
       
       // Return user data for redirect logic
@@ -190,6 +218,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
       
       localStorage.setItem('jwt_token', response.access_token);
+      setCookie('jwt_token', response.access_token, 7); // Store in cookie for 7 days
+      setCookie('user_data', JSON.stringify(response.user), 7); // Store user data in cookie
       setUser(response.user);
       
       // Return user data for redirect logic
@@ -212,6 +242,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
       
       localStorage.setItem('jwt_token', response.access_token);
+      setCookie('jwt_token', response.access_token, 7); // Store in cookie for 7 days
+      setCookie('user_data', JSON.stringify(response.user), 7); // Store user data in cookie
       setUser(response.user);
       
       return response.user;
@@ -239,6 +271,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
       
       localStorage.setItem('jwt_token', response.access_token);
+      setCookie('jwt_token', response.access_token, 7); // Store in cookie for 7 days
+      setCookie('user_data', JSON.stringify(response.user), 7); // Store user data in cookie
       setUser(response.user);
     } catch (error) {
       console.error('Email sign-up failed:', error);
@@ -257,8 +291,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         await signOut(auth);
       }
       
-      // Clear JWT token
+      // Clear JWT token from both localStorage and cookies
       localStorage.removeItem('jwt_token');
+      deleteCookie('jwt_token');
+      deleteCookie('user_data');
       
       // Clear user state
       setUser(null);
