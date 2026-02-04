@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -13,6 +13,7 @@ import { createLazyRoute } from './lib/lazyLoading';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import OfflineBanner from './components/ui/OfflineBanner';
+import PageLoader from './components/ui/PageLoader';
 
 // Lazy-loaded pages for better performance
 const HomePage = createLazyRoute(() => import('./pages/HomePage'));
@@ -30,6 +31,14 @@ const AdminDashboardPage = createLazyRoute(() => import('./pages/AdminDashboardP
 const PublicInvitationPage = createLazyRoute(() => import('./pages/PublicInvitationPage'));
 const PricingPage = createLazyRoute(() => import('./pages/PricingPage'));
 const ErrorPage = createLazyRoute(() => import('./pages/ErrorPage'));
+
+// Company pages with createLazyRoute
+const CareersPage = createLazyRoute(() => import('./pages/CareersPage'));
+const PressMediaPage = createLazyRoute(() => import('./pages/PressMediaPage'));
+const PrivacyPage = createLazyRoute(() => import('./pages/PrivacyPage'));
+const TermsPage = createLazyRoute(() => import('./pages/TermsPage'));
+const SitemapPage = createLazyRoute(() => import('./pages/SitemapPage'));
+const TemplatesPage = createLazyRoute(() => import('./pages/TemplatesPage'));
 
 function App() {
   // Initialize cache invalidation service with query client
@@ -50,6 +59,12 @@ function App() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/about" element={<AboutPage />} />
                   <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/careers" element={<CareersPage />} />
+                  <Route path="/press" element={<PressMediaPage />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/sitemap" element={<SitemapPage />} />
+                  <Route path="/templates" element={<TemplatesPage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/vendors" element={<VendorDirectoryPage />} />

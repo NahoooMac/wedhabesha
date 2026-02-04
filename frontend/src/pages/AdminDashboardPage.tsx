@@ -12,6 +12,7 @@ import UserManagement from '../components/admin/UserManagement';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import { Sun, Moon } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import TwoFactorWarningBanner from '../components/shared/TwoFactorWarningBanner';
 
 // Icon Components
 const Icons = {
@@ -310,6 +311,9 @@ const AdminDashboardPage: React.FC = () => {
         {/* Page Content */}
         <main className="flex-1 p-4 lg:p-10 overflow-auto">
           <div className="max-w-7xl mx-auto space-y-6">
+            {/* 2FA Warning Banner */}
+            <TwoFactorWarningBanner />
+            
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 {/* Loading State */}

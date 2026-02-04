@@ -41,6 +41,7 @@ import WorkingHoursInput from '../components/vendors/WorkingHoursInput';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import VendorMessaging from '../components/vendors/VendorMessaging';
 import NotificationBadge from '../components/shared/NotificationBadge';
+import TwoFactorWarningBanner from '../components/shared/TwoFactorWarningBanner';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { vendorApi } from '../lib/api';
 
@@ -330,7 +331,6 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
         
         setVendor(updatedVendor);
         setIsEditing(false);
-        console.log('✅ Profile updated successfully');
       }
     } catch (error) {
       console.error('❌ Failed to update profile:', error);
@@ -357,7 +357,6 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
       const result = await vendorApi.sendPhoneVerificationOTP(verificationPhone);
       if (result.success) {
         setPhoneVerificationStep('verify');
-        console.log('OTP sent successfully:', result.message);
       }
     } catch (error) {
       console.error('Failed to send OTP:', error);
@@ -373,7 +372,6 @@ const VendorProfileView = ({ vendor, setVendor }: { vendor: VendorProfileData, s
       if (result.success && result.verified) {
         setVendor({ ...vendor, phoneVerified: true });
         setPhoneVerificationStep('verified');
-        console.log('Phone verified successfully:', result.message);
       }
     } catch (error) {
       console.error('Failed to verify OTP:', error);
@@ -1187,6 +1185,9 @@ const DashboardHome = ({ vendor, setView }: { vendor: VendorProfileData, setView
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* 2FA Warning Banner */}
+      <TwoFactorWarningBanner />
+
       {/* Welcome & Profile Status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

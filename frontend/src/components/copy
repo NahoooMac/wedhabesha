@@ -1,0 +1,1016 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Heart, Calendar, MapPin, Share2, Download, ChevronLeft, ChevronRight, Type, Image as ImageIcon, Check, Star, Sparkles, Flower2, Search, Filter, SlidersHorizontal, ArrowRight, Eye, Edit3, X, Menu, Copy, CheckCircle } from 'lucide-react';
+
+/**
+ * ------------------------------------------------------------------
+ * 1. CONFIGURATION & ASSETS
+ * ------------------------------------------------------------------
+ */
+
+const FontLoader = () => (
+  <style dangerouslySetInnerHTML={{
+    __html: `
+    @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Belleza&family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Great+Vibes&family=Lato:wght@300;400;700&family=Montserrat:wght@200;300;400;500;600&family=Nunito:wght@200;300;400;600;700&family=Parisienne&family=Pinyon+Script&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Prata&display=swap');
+    
+    .font-smooth {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+    
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* 🔥 Classy Slow Zoom Animation */
+    @keyframes slowZoom {
+      from { transform: scale(1); }
+      to   { transform: scale(1.02); }
+    }
+    
+    .animate-slow-zoom {
+      animation: slowZoom 20s ease-in-out infinite alternate;
+    }
+
+    /* Subtle Paper Texture */
+    .paper-texture {
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+  `}} />
+);
+
+const DEFAULT_DATA = {
+  bride: "Nahom",
+  groom: "Daniel",
+  date: "2026-12-29",
+  time: "10:00 AM",
+  location: "123 Anywhere St., Any City",
+  message: "Request the pleasure of your company at the ceremony of their wedding",
+  imageUrl: null
+};
+
+// Helper to split date into parts
+const formatDateParts = (dateString) => {
+  if (!dateString) return { day: "29", month: "DECEMBER", weekday: "SATURDAY", year: "2026" };
+  const date = new Date(dateString);
+  return {
+    day: date.getDate(),
+    month: date.toLocaleString('default', { month: 'short' }).toUpperCase(), 
+    fullMonth: date.toLocaleString('default', { month: 'long' }).toUpperCase(),
+    weekday: date.toLocaleString('default', { weekday: 'long' }).toUpperCase(),
+    year: date.getFullYear()
+  };
+};
+
+/**
+ * ------------------------------------------------------------------
+ * 2. TEMPLATE COMPONENTS (THE ENGINES)
+ * ------------------------------------------------------------------
+ */
+
+const PaperOverlay = () => (
+  <div className="absolute inset-0 z-20 paper-texture mix-blend-multiply opacity-60 pointer-events-none rounded-sm"></div>
+);
+
+// --- New: Elegant Gold Script (Design 1) ---
+const ElegantGoldTemplate = ({ data }) => {
+  const { day, fullMonth, weekday, year } = formatDateParts(data.date);
+
+  return (
+    <div className="w-full h-full relative overflow-hidden font-smooth bg-white">
+       {/* Background Layer */}
+       <div 
+         className="absolute inset-0 z-0 bg-no-repeat bg-center"
+         style={{ 
+           backgroundImage: `url('https://reflectionplc.com/design%201.png')`,
+           backgroundSize: '100% 100%', 
+         }}
+       ></div>
+       
+       <PaperOverlay />
+
+       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center px-[10%]">
+            
+            {/* Top Text - Belleza */}
+            <div className="absolute top-[18%] w-full">
+               <p className="font-['Belleza'] uppercase tracking-[0.2em] text-[#4A4A4A]" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>
+                 Together with their families
+               </p>
+            </div>
+
+            {/* Names - Pinyon Script (Edwardian alternative) */}
+            <div className="absolute top-[28%] w-full flex flex-col items-center">
+               <h1 className="font-['Pinyon_Script'] text-[#C5A059] leading-none" style={{ fontSize: 'clamp(3.5rem, 13cqw, 6.5rem)' }}>
+                 {data.bride}
+               </h1>
+               <span className="font-['Prata'] text-[#4A4A4A] my-[1cqh]" style={{ fontSize: 'clamp(1rem, 3cqw, 1.5rem)' }}>&</span>
+               <h1 className="font-['Pinyon_Script'] text-[#C5A059] leading-none" style={{ fontSize: 'clamp(3.5rem, 13cqw, 6.5rem)' }}>
+                 {data.groom}
+               </h1>
+            </div>
+
+            {/* Date & Details Section */}
+            <div className="absolute top-[60%] w-full flex flex-col items-center text-[#4A4A4A]">
+               <p className="font-['Belleza'] uppercase tracking-[0.15em] mb-[3cqh] opacity-80" style={{ fontSize: 'clamp(0.5rem, 1.8cqw, 0.8rem)' }}>
+                 Request the honor of your presence
+               </p>
+
+               <div className="flex items-center justify-center gap-4 mb-[2cqh] w-full">
+                  <span className="font-['Prata'] uppercase tracking-widest" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1.2rem)' }}>{fullMonth}</span>
+                  <span className="h-[2.5cqh] w-[1px] bg-[#C5A059]"></span>
+                  <span className="font-['Prata'] font-medium" style={{ fontSize: 'clamp(2rem, 5cqw, 3rem)' }}>{day}</span>
+                  <span className="h-[2.5cqh] w-[1px] bg-[#C5A059]"></span>
+                  <span className="font-['Prata']" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1.2rem)' }}>{year}</span>
+               </div>
+
+               <p className="font-['Belleza'] uppercase tracking-[0.1em]" style={{ fontSize: 'clamp(0.7rem, 2.2cqw, 1rem)' }}>
+                 {weekday} at {data.time}
+               </p>
+
+               <div className="mt-[4cqh] w-full">
+                 <p className="font-['Prata'] uppercase tracking-widest mb-1 text-[#333]" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1.2rem)' }}>
+                   {data.location.split(',')[0] || "Grand Ballroom"}
+                 </p>
+                 <p className="font-['Belleza'] text-xs uppercase tracking-wide opacity-70" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)' }}>
+                   {data.location.split(',').slice(1).join(',') || "City, State"}
+                 </p>
+               </div>
+            </div>
+            
+            <div className="absolute bottom-[8%] w-full">
+                <p className="font-['Pinyon_Script'] text-[#C5A059]" style={{ fontSize: 'clamp(1.5rem, 5cqw, 2.5rem)' }}>Reception to follow</p>
+            </div>
+       </div>
+    </div>
+  );
+};
+
+// --- Violet Peony Template ---
+const VioletPeonyTemplate = ({ data }) => {
+  const { day, month, weekday, year } = formatDateParts(data.date);
+
+  return (
+    <div className="w-full h-full relative overflow-hidden font-smooth bg-[#FFF0F5]">
+       <div 
+         className="absolute inset-0 z-0 bg-no-repeat bg-center"
+         style={{ 
+           backgroundImage: `url('https://reflectionplc.com/design%202.png')`,
+           backgroundSize: '100% 100%', 
+         }}
+       ></div>
+       
+       <PaperOverlay />
+
+       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center px-[10%]">
+          
+          <div className="absolute top-[18%] w-full">
+             <p className="font-['Montserrat'] uppercase tracking-[0.15em] text-[#5D4037] font-medium" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>
+               Together with their families
+             </p>
+          </div>
+
+          <div className="absolute top-[30%] w-full flex flex-col items-center">
+             <h1 className="font-['Great_Vibes'] text-[#884A5E] leading-none transform -rotate-2" style={{ fontSize: 'clamp(3rem, 12cqw, 6rem)' }}>
+               {data.bride}
+             </h1>
+             <span className="font-['Cormorant_Garamond'] italic text-[#884A5E] my-[0.5cqh]" style={{ fontSize: 'clamp(1.5rem, 5cqw, 2.5rem)' }}>&</span>
+             <h1 className="font-['Great_Vibes'] text-[#884A5E] leading-none transform -rotate-2" style={{ fontSize: 'clamp(3rem, 12cqw, 6rem)' }}>
+               {data.groom}
+             </h1>
+          </div>
+
+          <div className="absolute top-[55%] w-full">
+             <p className="font-['Montserrat'] uppercase tracking-[0.15em] text-[#5D4037] font-medium" style={{ fontSize: 'clamp(0.5rem, 1.8cqw, 0.8rem)' }}>
+               Invite you to join their wedding
+             </p>
+          </div>
+
+          <div className="absolute top-[65%] w-full flex items-center justify-center gap-4 text-[#6D4C41]">
+             <span className="font-['Montserrat'] uppercase tracking-widest font-bold w-[30%] text-right" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>{weekday}</span>
+
+             <div className="h-[6cqh] w-[1px] bg-[#884A5E]"></div>
+
+             <div className="flex flex-col items-center leading-none text-[#5D4037]">
+                <span className="font-['Cormorant_Garamond'] uppercase tracking-widest font-bold" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1rem)' }}>{month}</span>
+                <span className="font-['Cormorant_Garamond'] font-bold my-[0.5cqh]" style={{ fontSize: 'clamp(2.5rem, 8cqw, 4rem)' }}>{day}</span>
+                <span className="font-['Cormorant_Garamond'] font-bold" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1rem)' }}>{year}</span>
+             </div>
+
+             <div className="h-[6cqh] w-[1px] bg-[#884A5E]"></div>
+
+             <span className="font-['Montserrat'] uppercase tracking-widest font-bold w-[30%] text-left whitespace-nowrap" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>AT {data.time}</span>
+          </div>
+
+          <div className="absolute bottom-[10%] w-full">
+             <p className="font-['Montserrat'] uppercase tracking-[0.1em] text-[#5D4037] mb-[2cqh]" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)' }}>
+               {data.location}
+             </p>
+             <p className="font-['Great_Vibes'] text-[#884A5E]" style={{ fontSize: 'clamp(1.5rem, 5cqw, 3rem)' }}>
+               Reception to follow
+             </p>
+          </div>
+       </div>
+    </div>
+  );
+};
+
+// --- Purple Gold Aesthetic Template ---
+const PurpleGoldTemplate = ({ data }) => {
+  const { day, fullMonth, weekday, year } = formatDateParts(data.date);
+
+  return (
+    <div className="w-full h-full relative overflow-hidden font-smooth bg-white">
+       <div 
+         className="absolute inset-0 z-0 bg-no-repeat bg-center"
+         style={{ 
+           backgroundImage: `url('https://reflectionplc.com/design%203.png')`,
+           backgroundSize: '100% 100%', 
+         }}
+       ></div>
+       
+       <PaperOverlay />
+
+       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center px-[10%]">
+            <div className="absolute top-[15%] w-full">
+               <p className="font-['Nunito'] font-semibold text-[#4A3B52] tracking-wide" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>
+                 Please join us to celebrate the<br/>wedding of:
+               </p>
+            </div>
+
+            <div className="absolute top-[32%] w-full flex flex-col items-center">
+               <h1 className="font-['Great_Vibes'] text-[#4A3B52] leading-none" style={{ fontSize: 'clamp(2.5rem, 9cqw, 4.5rem)' }}>
+                 {data.bride}
+               </h1>
+               <span className="font-['Great_Vibes'] text-[#4A3B52] my-[0.5cqh]" style={{ fontSize: 'clamp(1.5rem, 5cqw, 2.5rem)' }}>&</span>
+               <h1 className="font-['Great_Vibes'] text-[#4A3B52] leading-none" style={{ fontSize: 'clamp(2.5rem, 9cqw, 4.5rem)' }}>
+                 {data.groom}
+               </h1>
+            </div>
+
+            <div className="absolute top-[60%] w-full flex flex-col items-center">
+               <div className="font-['Nunito'] font-bold text-[#4A3B52] uppercase tracking-[0.2em] mb-[1cqh]" style={{ fontSize: 'clamp(0.7rem, 2.5cqw, 1rem)' }}>
+                 {fullMonth}
+               </div>
+
+               <div className="flex items-center justify-center gap-3 w-full max-w-[90%] mb-[1cqh]">
+                  <div className="flex-1 border-t-2 border-[#D4AF37] opacity-60"></div>
+                  <div className="bg-[#D4AF37]/10 px-2 py-1 rounded">
+                     <span className="font-['Nunito'] font-bold text-[#4A3B52] uppercase tracking-widest" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)' }}>{weekday}</span>
+                  </div>
+                  
+                  <span className="font-['Nunito'] font-bold text-[#6A5ACD] leading-none mx-2" style={{ fontSize: 'clamp(3rem, 10cqw, 5rem)' }}>{day}</span>
+                  
+                  <div className="bg-[#D4AF37]/10 px-2 py-1 rounded">
+                     <span className="font-['Nunito'] font-bold text-[#4A3B52] uppercase tracking-widest whitespace-nowrap" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)' }}>AT {data.time}</span>
+                  </div>
+                  <div className="flex-1 border-t-2 border-[#D4AF37] opacity-60"></div>
+               </div>
+
+               <div className="font-['Nunito'] font-bold text-[#4A3B52] tracking-[0.2em] mb-[4cqh]" style={{ fontSize: 'clamp(0.8rem, 3cqw, 1.2rem)' }}>
+                 {year}
+               </div>
+
+               <div className="font-['Nunito'] font-bold text-[#4A3B52] mb-[2cqh]" style={{ fontSize: 'clamp(0.7rem, 2.5cqw, 1rem)' }}>
+                 Liceria Grand Ballroom<br/>
+                 <span className="font-normal text-[#666]">{data.location}</span>
+               </div>
+            </div>
+       </div>
+    </div>
+  );
+};
+
+// --- Updated: Green Geometric Floral Template ---
+const GreenGeometricTemplate = ({ data }) => {
+  const { day, fullMonth, weekday, year } = formatDateParts(data.date);
+
+  return (
+    <div className="w-full h-full relative overflow-hidden font-smooth bg-white">
+       <div 
+         className="absolute inset-0 z-0 bg-no-repeat bg-center"
+         style={{ 
+           backgroundImage: `url('https://reflectionplc.com/design%204.png')`,
+           backgroundSize: '100% 100%', 
+         }}
+       ></div>
+       <PaperOverlay />
+       
+       {/* Top Section */}
+       <div className="absolute top-[8%] w-full text-center z-10 px-8">
+          <p className="font-['Montserrat'] uppercase tracking-[0.2em] text-[#374151]" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)', lineHeight: '1.6' }}>
+            Together<br/>with their families
+          </p>
+       </div>
+
+       {/* Names - Centered in Diamond */}
+       <div className="absolute top-[32%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 w-full text-center flex flex-col items-center justify-center">
+          <h1 className="font-['Alex_Brush'] text-[#B8860B] leading-none" style={{ fontSize: 'clamp(3rem, 10cqw, 5rem)' }}>
+            {data.bride}
+          </h1>
+          <span className="font-['Montserrat'] text-[#B8860B] my-[0.5cqh]" style={{ fontSize: 'clamp(1rem, 3cqw, 1.5rem)' }}>&</span>
+          <h1 className="font-['Alex_Brush'] text-[#B8860B] leading-none" style={{ fontSize: 'clamp(3rem, 10cqw, 5rem)' }}>
+            {data.groom}
+          </h1>
+       </div>
+
+       {/* Bottom Details Section - MOVED DOWN */}
+       <div className="absolute top-[78%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 w-full px-4 flex flex-col items-center justify-center text-center">
+          <p className="font-['Montserrat'] uppercase tracking-[0.15em] text-[#374151] mb-[3cqh]" style={{ fontSize: 'clamp(0.5rem, 1.8cqw, 0.75rem)' }}>
+            Invite you to join their<br/>wedding celebration on
+          </p>
+
+          {/* Date Block */}
+          <div className="flex flex-col items-center w-full text-[#374151]">
+             {/* Month */}
+             <span className="font-['Montserrat'] uppercase tracking-[0.2em] mb-[1cqh] font-medium" style={{ fontSize: 'clamp(0.7rem, 2.2cqw, 1rem)' }}>
+               {fullMonth}
+             </span>
+
+             {/* Day Row with Flanking Lines */}
+             <div className="flex items-center justify-center w-full max-w-[90%] gap-3 mb-[1cqh]">
+                <div className="h-[1px] bg-[#374151] flex-1 opacity-40"></div>
+                <span className="font-['Montserrat'] uppercase tracking-widest" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>{weekday}</span>
+                
+                <span className="font-['Montserrat'] font-medium mx-2" style={{ fontSize: 'clamp(3rem, 10cqw, 5rem)', lineHeight: 1 }}>{day}</span>
+                
+                <span className="font-['Montserrat'] uppercase tracking-widest whitespace-nowrap" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.9rem)' }}>AT {data.time}</span>
+                <div className="h-[1px] bg-[#374151] flex-1 opacity-40"></div>
+             </div>
+
+             {/* Year */}
+             <span className="font-['Montserrat'] tracking-[0.2em] font-medium" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1.1rem)' }}>
+               {year}
+             </span>
+          </div>
+
+          {/* Location */}
+          <div className="font-['Montserrat'] uppercase tracking-[0.1em] text-[#374151] mt-[3cqh] mb-[3cqh]" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)' }}>
+             {data.location}
+          </div>
+
+          {/* Footer */}
+          <p className="font-['Alex_Brush'] text-[#5D4037]" style={{ fontSize: 'clamp(1.5rem, 5cqw, 2.5rem)' }}>
+             Reception to follow
+          </p>
+       </div>
+    </div>
+  );
+};
+
+// --- Blue Floral Engagement Template ---
+const BlueFloralTemplate = ({ data }) => {
+  return (
+    <div className="w-full h-full relative overflow-hidden font-smooth bg-[#F0F4F8]">
+       <div 
+         className="absolute inset-0 z-0 bg-no-repeat bg-center"
+         style={{ 
+           backgroundImage: `url('https://reflectionplc.com/design%205.png')`,
+           backgroundSize: 'cover', 
+           backgroundPosition: 'center'
+         }}
+       ></div>
+       <PaperOverlay />
+       <div className="absolute inset-[8%] z-10 bg-white/90 backdrop-blur-[1px] rounded-t-[50%] rounded-b-lg shadow-sm flex flex-col items-center justify-center text-center p-6 border border-white/50">
+            <div className="mb-[3cqh]">
+                <Flower2 className="w-6 h-6 text-[#7DA0C4] mx-auto mb-2 opacity-80" strokeWidth={1} />
+                <p className="font-['Montserrat'] uppercase tracking-[0.2em] text-[#546E7A] font-medium" style={{ fontSize: 'clamp(0.5rem, 1.8cqw, 0.75rem)' }}>
+                    You are invited to<br/>the engagement of
+                </p>
+            </div>
+            <div className="mb-[2cqh] w-full flex flex-col items-center gap-0">
+              <h1 className="font-['Alex_Brush'] text-[#8D6E63] transform -rotate-3" style={{ fontSize: 'clamp(3rem, 10cqw, 5rem)', lineHeight: '0.8' }}>{data.bride}</h1>
+              <span className="font-['Alex_Brush'] text-[#7DA0C4] my-1" style={{ fontSize: 'clamp(1.5rem, 4cqw, 2rem)' }}>and</span>
+              <h1 className="font-['Alex_Brush'] text-[#8D6E63] transform -rotate-3" style={{ fontSize: 'clamp(3rem, 10cqw, 5rem)', lineHeight: '0.8' }}>{data.groom}</h1>
+            </div>
+            <div className="mb-[4cqh] mt-2">
+                <p className="font-['Montserrat'] uppercase tracking-[0.2em] text-[#546E7A] mb-2" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)' }}>Date</p>
+                <div className="font-['Cinzel'] text-[#455A64] tracking-widest font-bold" style={{ fontSize: 'clamp(0.8rem, 2.5cqw, 1.2rem)' }}>
+                    {data.date ? new Date(data.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase() : "FEBRUARY 14, 2025"}
+                </div>
+            </div>
+            <div className="font-['Montserrat'] text-[#546E7A] space-y-1" style={{ fontSize: 'clamp(0.6rem, 2cqw, 0.8rem)', letterSpacing: '0.1em' }}>
+                <p>{data.time ? data.time.toUpperCase() : "19.30"} - END</p>
+                <p className="max-w-[80%] mx-auto mt-2 leading-relaxed uppercase">{data.location || "123 Any Where St., Any City"}</p>
+            </div>
+       </div>
+    </div>
+  );
+};
+
+// --- Royal Floral Template ---
+const RoyalFloralTemplate = ({ data }) => {
+  const { day, fullMonth, weekday } = formatDateParts(data.date);
+  return (
+    <div className="w-full h-full relative overflow-hidden font-smooth bg-[#FCFbf7]">
+       <div 
+         className="absolute inset-0 z-0 bg-no-repeat bg-center"
+         style={{ 
+           backgroundImage: `url('http://reflectionplc.com/design%206.png')`,
+           backgroundSize: '100% 100%', 
+         }}
+       ></div>
+       <PaperOverlay />
+       <div className="absolute top-[52%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 w-full px-[8%] flex flex-col items-center justify-center text-center">
+            <div className="mb-[2cqh]">
+              <p className="font-['Alex_Brush'] text-[#8B5E3C] leading-none mb-1" style={{ fontSize: 'clamp(1rem, 3.5cqw, 2rem)' }}>Together with</p>
+              <p className="font-['Alex_Brush'] text-[#8B5E3C] leading-none" style={{ fontSize: 'clamp(1rem, 3.5cqw, 2rem)' }}>their families</p>
+            </div>
+            <div className="mb-[2.5cqh] w-full flex flex-col items-center">
+              <h1 className="font-['Parisienne'] text-[#6D4246] leading-none drop-shadow-sm" style={{ fontSize: 'clamp(3rem, 10cqw, 6rem)' }}>
+                {data.bride}
+              </h1>
+              <span className="font-['Parisienne'] text-[#C5A059] my-[0.5cqh]" style={{ fontSize: 'clamp(1.5rem, 5cqw, 2.5rem)' }}>&</span>
+              <h1 className="font-['Parisienne'] text-[#6D4246] leading-none drop-shadow-sm" style={{ fontSize: 'clamp(3rem, 10cqw, 6rem)' }}>
+                {data.groom}
+              </h1>
+            </div>
+            <div className="mb-[4cqh] max-w-[85%] mx-auto">
+               <p className="font-['Cormorant_Garamond'] text-[#4A4A4A] italic leading-relaxed" style={{ fontSize: 'clamp(0.8rem, 2.8cqw, 1.4rem)' }}>{data.message}</p>
+            </div>
+            <div className="w-full flex flex-col items-center mb-[4cqh] text-[#6D4246]">
+                <div className="flex items-center justify-center w-full gap-2 md:gap-4 px-1">
+                    <div className="h-[1px] bg-[#C5A059] w-[12%]"></div>
+                    <span className="font-['Nunito'] font-bold tracking-widest uppercase text-[#8B5E3C] text-right whitespace-nowrap" style={{ fontSize: 'clamp(0.55rem, 1.8cqw, 0.9rem)' }}>{weekday}</span>
+                    <span className="font-['Playfair_Display'] text-[#6D4246] leading-none mx-2 font-normal" style={{ fontSize: 'clamp(2.5rem, 9cqw, 5rem)' }}>{day}</span>
+                    <span className="font-['Nunito'] font-bold tracking-widest uppercase text-[#8B5E3C] text-left whitespace-nowrap" style={{ fontSize: 'clamp(0.55rem, 1.8cqw, 0.9rem)' }}>AT {data.time}</span>
+                    <div className="h-[1px] bg-[#C5A059] w-[12%]"></div>
+                </div>
+                <div className="font-['Nunito'] tracking-[0.3em] uppercase text-[#4A4A4A] mt-1 font-bold" style={{ fontSize: 'clamp(0.6rem, 2.2cqw, 1.1rem)' }}>{fullMonth}</div>
+            </div>
+            <div className="mb-[3cqh]">
+               <p className="font-['Cormorant_Garamond'] text-[#4A4A4A]" style={{ fontSize: 'clamp(0.8rem, 2.8cqw, 1.4rem)' }}>{data.location}</p>
+            </div>
+            <p className="font-['Alex_Brush'] text-[#8B5E3C]" style={{ fontSize: 'clamp(1.2rem, 4.5cqw, 2.5rem)' }}>Reception to follow</p>
+       </div>
+    </div>
+  );
+};
+
+const ClassicTemplate = ({ data }) => (
+  <div className="w-full h-full bg-[#FFF8F0] text-[#5D4037] flex flex-col items-center justify-center p-8 border-[clamp(6px,2vw,12px)] border-double border-[#D7C0AE] font-smooth relative overflow-hidden transition-all duration-500">
+    <PaperOverlay />
+    <div className="absolute top-4 left-4 w-[10%] h-[10%] border-t-2 border-l-2 border-[#8B5E3C] opacity-50"></div>
+    <div className="absolute top-4 right-4 w-[10%] h-[10%] border-t-2 border-r-2 border-[#8B5E3C] opacity-50"></div>
+    <div className="absolute bottom-4 left-4 w-[10%] h-[10%] border-b-2 border-l-2 border-[#8B5E3C] opacity-50"></div>
+    <div className="absolute bottom-4 right-4 w-[10%] h-[10%] border-b-2 border-r-2 border-[#8B5E3C] opacity-50"></div>
+
+    <p className="uppercase tracking-[0.2em] mb-8 text-[#8B5E3C] font-['Lato']" style={{ fontSize: 'clamp(0.6rem, 1.5cqw, 0.8rem)' }}>The Wedding Of</p>
+    
+    <div className="font-['Playfair_Display'] text-center leading-[1.1]" style={{ fontSize: 'clamp(2rem, 6cqw, 3.5rem)' }}>
+      <span className="block">{data.bride || "Bride"}</span>
+      <span className="italic text-[#D4A373] my-2 block" style={{ fontSize: '0.6em' }}>&</span>
+      <span className="block">{data.groom || "Groom"}</span>
+    </div>
+
+    <div className="w-12 h-[1px] bg-[#8B5E3C] my-[4cqh] opacity-40"></div>
+
+    <p className="font-['Lato'] tracking-widest uppercase mb-2" style={{ fontSize: 'clamp(0.7rem, 2cqw, 0.9rem)' }}>
+      {data.date || "Date"} • {data.time || "Time"}
+    </p>
+    <p className="font-['Playfair_Display'] italic mb-[4cqh]" style={{ fontSize: 'clamp(1rem, 3cqw, 1.25rem)' }}>{data.location || "Location"}</p>
+
+    {data.imageUrl && (
+      <div className="w-[30%] aspect-square rounded-full overflow-hidden border-2 border-[#D7C0AE] mb-6 shadow-md mx-auto">
+        <img src={data.imageUrl} alt="Couple" className="w-full h-full object-cover" />
+      </div>
+    )}
+
+    <p className="font-['Lato'] text-center max-w-[80%] leading-relaxed opacity-80 tracking-wide mx-auto" style={{ fontSize: 'clamp(0.6rem, 1.8cqw, 0.8rem)' }}>
+      {data.message}
+    </p>
+  </div>
+);
+
+const ModernTemplate = ({ data }) => (
+  <div className="w-full h-full bg-white text-black flex flex-col relative font-smooth transition-all duration-500 border border-gray-100">
+    <PaperOverlay />
+    <div className="h-2/3 flex flex-col justify-between p-[5%] z-10">
+      <div className="font-['Montserrat'] font-light tracking-[0.3em] uppercase" style={{ fontSize: 'clamp(0.6rem, 1.5cqw, 0.8rem)' }}>Save The Date</div>
+      
+      <div className="font-['Montserrat'] font-bold leading-[0.9] -ml-1 break-words" style={{ fontSize: 'clamp(2.5rem, 8cqw, 4.5rem)' }}>
+        <div className="uppercase">{data.bride || "Bride"}</div>
+        <div className="w-16 h-2 bg-black my-4"></div>
+        <div className="uppercase">{data.groom || "Groom"}</div>
+      </div>
+    </div>
+
+    <div className="absolute top-0 right-0 w-1/2 h-full bg-neutral-100 overflow-hidden hidden md:block">
+       {data.imageUrl ? (
+          <img src={data.imageUrl} alt="Couple" className="w-full h-full object-cover grayscale contrast-125" />
+       ) : (
+         <div className="w-full h-full bg-neutral-900 flex items-center justify-center text-neutral-700">
+           <span className="rotate-90 font-black opacity-10 tracking-tighter" style={{ fontSize: 'clamp(4rem, 12cqw, 8rem)' }}>LOVE</span>
+         </div>
+       )}
+    </div>
+
+    <div className="bg-black text-white p-[5%] flex flex-col md:flex-row md:items-center justify-between z-20 h-1/3">
+       <div>
+          <p className="font-['Montserrat'] font-light mb-1" style={{ fontSize: 'clamp(1.2rem, 3.5cqw, 1.8rem)' }}>{data.date || "Date"}</p>
+          <p className="font-['Montserrat'] font-medium text-neutral-400" style={{ fontSize: 'clamp(0.8rem, 2cqw, 1rem)' }}>{data.time}</p>
+       </div>
+    </div>
+  </div>
+);
+
+const RusticTemplate = ({ data }) => (
+  <div className="w-full h-full bg-[#Fdfdfd] text-[#4A4A4A] flex flex-col items-center justify-center p-[4%] font-smooth border-[clamp(4px,1vw,8px)] border-[#E8E8E8] transition-all duration-500">
+    <PaperOverlay />
+    <div className="border border-[#4A4A4A] p-2 w-full h-full flex flex-col items-center justify-center relative">
+       <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(circle,_#000_1px,_transparent_1px)] bg-[length:20px_20px]"></div>
+
+       <h2 className="font-['Great_Vibes'] mb-2 text-[#6D4C41] transform -rotate-2 text-center" style={{ fontSize: 'clamp(2.5rem, 8cqw, 4.5rem)' }}>
+         {data.bride || "Bride"} & {data.groom || "Groom"}
+       </h2>
+       
+       <div className="my-[4cqh] flex items-center gap-4">
+         <div className="h-[1px] w-12 bg-[#9E9E9E]"></div>
+         <Heart className="w-4 h-4 text-[#FF7043] fill-current" />
+         <div className="h-[1px] w-12 bg-[#9E9E9E]"></div>
+       </div>
+
+       <div className="font-['Cinzel'] font-semibold tracking-[0.15em] mb-1" style={{ fontSize: 'clamp(1rem, 3cqw, 1.25rem)' }}>
+         {data.date || "Date"}
+       </div>
+
+       {data.imageUrl && (
+        <div className="w-[40%] aspect-[3/4] my-[4cqh] bg-white p-2 shadow-lg transform rotate-2 mx-auto">
+          <img src={data.imageUrl} alt="Couple" className="w-full h-full object-cover sepia-[.3]" />
+        </div>
+       )}
+    </div>
+  </div>
+);
+
+const BotanicalTemplate = ({ data }) => (
+  <div className="w-full h-full bg-white text-[#2E4F2F] flex flex-col relative font-smooth overflow-hidden transition-all duration-500 border border-green-50">
+    <PaperOverlay />
+    <div className="absolute top-0 left-0 w-[30%] aspect-square bg-[#E8F5E9] rounded-br-[100%] opacity-60"></div>
+    <div className="absolute bottom-0 right-0 w-[35%] aspect-square bg-[#C8E6C9] rounded-tl-[100%] opacity-40"></div>
+
+    <div className="z-10 flex flex-col h-full p-[5%] items-center justify-center text-center">
+        <p className="font-['Montserrat'] uppercase tracking-[0.3em] mb-6 text-[#558B2F]" style={{ fontSize: 'clamp(0.6rem, 1.5cqw, 0.8rem)' }}>The Wedding Of</p>
+        
+        <div className="relative">
+          <h1 className="font-['Cinzel'] text-[#1B5E20] mb-1" style={{ fontSize: 'clamp(2rem, 6cqw, 3.5rem)' }}>{data.bride || "Bride"}</h1>
+          <div className="font-['Great_Vibes'] text-[#81C784] my-2" style={{ fontSize: 'clamp(1.5rem, 4cqw, 2.5rem)' }}>&</div>
+          <h1 className="font-['Cinzel'] text-[#1B5E20] mb-8" style={{ fontSize: 'clamp(2rem, 6cqw, 3.5rem)' }}>{data.groom || "Groom"}</h1>
+        </div>
+
+        {data.imageUrl && (
+            <div className="w-[30%] aspect-square rounded-full border-4 border-[#A5D6A7] p-1 mb-8 shadow-sm mx-auto">
+                <div className="w-full h-full rounded-full overflow-hidden">
+                     <img src={data.imageUrl} alt="Couple" className="w-full h-full object-cover" />
+                </div>
+            </div>
+        )}
+    </div>
+  </div>
+);
+
+// Define Aspect Ratios for Templates
+const TEMPLATES = [
+  { id: "elegantgold", name: "Elegant Gold Script", category: "Classic", component: ElegantGoldTemplate, colors: ["#FFFFFF", "#C5A059", "#4A4A4A"], font: "Pinyon Script", aspectRatio: "5/7" },
+  { id: "royal", name: "Royal Floral", category: "Classic", component: RoyalFloralTemplate, colors: ["#FCFbf7", "#682e33", "#D4AF37"], font: "Parisienne", aspectRatio: "1240/1748" },
+  { id: "violetpeony", name: "Violet Peony", category: "Floral", component: VioletPeonyTemplate, colors: ["#FFF0F5", "#884A5E", "#5D4037"], font: "Great Vibes", aspectRatio: "5/7" },
+  { id: "purplegold", name: "Purple Aesthetic", category: "Modern", component: PurpleGoldTemplate, colors: ["#FFFFFF", "#6A5ACD", "#D4AF37"], font: "Great Vibes", aspectRatio: "5/7" },
+  { id: "greengeo", name: "Green Geometric", category: "Floral", component: GreenGeometricTemplate, colors: ["#FFFFFF", "#374151", "#B8860B"], font: "Montserrat", aspectRatio: "5/7" },
+  { id: "bluefloral", name: "Blue Watercolor", category: "Floral", component: BlueFloralTemplate, colors: ["#F0F4F8", "#7DA0C4", "#8D6E63"], font: "Alex Brush", aspectRatio: "5/7" },
+  { id: "classic", name: "Classic Elegance", category: "Classic", component: ClassicTemplate, colors: ["#FFF8F0", "#8B5E3C", "#D7C0AE", "#000000"], font: "Playfair", aspectRatio: "4/6" },
+  { id: "modern", name: "Modern Minimal", category: "Modern", component: ModernTemplate, colors: ["#ffffff", "#000000", "#9CA3AF"], font: "Montserrat", aspectRatio: "4/6" },
+  { id: "rustic", name: "Rustic Charm", category: "Rustic", component: RusticTemplate, colors: ["#Fdfdfd", "#6D4C41", "#FF7043", "#E8E8E8"], font: "Great Vibes", aspectRatio: "4/6" },
+  { id: "botanical", name: "Botanical Garden", category: "Floral", component: BotanicalTemplate, colors: ["#F1F8E9", "#2E4F2F", "#81C784"], font: "Cinzel", aspectRatio: "4/6" }
+];
+
+const CATEGORIES = [
+  { id: 'all', label: 'All', icon: null },
+  { id: 'floral', label: 'Floral', icon: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&q=80&w=100' },
+  { id: 'rustic', label: 'Rustic', icon: 'https://images.unsplash.com/photo-1505932794465-147d1f1b2c97?auto=format&fit=crop&q=80&w=100' },
+  { id: 'simple', label: 'Simple', icon: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=100' },
+  { id: 'classic', label: 'Classic', icon: 'https://images.unsplash.com/photo-1519225421980-715cb0202128?auto=format&fit=crop&q=80&w=100' },
+  { id: 'vintage', label: 'Vintage', icon: 'https://images.unsplash.com/photo-1506784365847-bbad939e9335?auto=format&fit=crop&q=80&w=100' },
+  { id: 'modern', label: 'Modern', icon: 'https://images.unsplash.com/photo-1606103836293-c811d0d97746?auto=format&fit=crop&q=80&w=100' },
+];
+
+/**
+ * ------------------------------------------------------------------
+ * 3. UI COMPONENTS
+ * ------------------------------------------------------------------
+ */
+
+const FormInput = ({ label, value, onChange, type = "text", placeholder }) => (
+  <div className="mb-5 animate-fadeIn group">
+    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 transition-colors group-focus-within:text-blue-600">
+      {label}
+    </label>
+    {type === "textarea" ? (
+      <textarea
+        value={value}
+        onChange={onChange}
+        rows={3}
+        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white transition-all text-sm shadow-sm"
+        placeholder={placeholder}
+      />
+    ) : (
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white transition-all text-sm shadow-sm"
+        placeholder={placeholder}
+      />
+    )}
+  </div>
+);
+
+const Toast = ({ message, onClose }) => (
+  <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-fadeIn">
+    <CheckCircle className="w-5 h-5 text-green-400" />
+    <span className="text-sm font-bold">{message}</span>
+    <button onClick={onClose} className="ml-2 hover:bg-white/20 rounded-full p-1"><X className="w-3 h-3" /></button>
+  </div>
+);
+
+const StepIndicator = ({ currentStep, totalSteps }) => (
+  <div className="flex items-center justify-between mb-8 px-2 select-none relative">
+    {/* Line */}
+    <div className="absolute top-1/2 left-0 right-0 h-[2px] bg-gray-100 -z-0 -translate-y-1/2">
+      <div 
+        className="h-full bg-slate-900 transition-all duration-500 ease-out" 
+        style={{ width: `${((currentStep - 1) / (totalSteps - 1)) * 100}%` }}
+      />
+    </div>
+
+    {[...Array(totalSteps)].map((_, i) => {
+      const stepNum = i + 1;
+      const isActive = stepNum === currentStep;
+      const isCompleted = stepNum < currentStep;
+      
+      return (
+        <div key={stepNum} className="flex flex-col items-center relative z-10 bg-white px-2">
+          <div 
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 border-2 ${
+              isActive ? 'bg-slate-900 text-white border-slate-900 scale-110 shadow-lg' : 
+              isCompleted ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-400 border-gray-200'
+            }`}
+          >
+            {isCompleted ? <Check className="w-4 h-4" /> : stepNum}
+          </div>
+          <span className={`absolute -bottom-6 text-[10px] uppercase tracking-wider font-bold whitespace-nowrap transition-colors duration-300 ${isActive ? 'text-slate-900' : 'text-gray-300'}`}>
+            {stepNum === 1 ? 'Design' : stepNum === 2 ? 'Basics' : stepNum === 3 ? 'Details' : stepNum === 4 ? 'Photo' : 'Review'}
+          </span>
+        </div>
+      );
+    })}
+  </div>
+);
+
+// --- Component: Live Thumbnail Card ---
+const ProductCard = ({ template, onSelect }) => {
+  const Component = template.component;
+  const dummyData = {
+    bride: "Alice",
+    groom: "James",
+    date: "DEC 29",
+    time: "4PM",
+    location: "Grand Hall",
+    message: "Join Us",
+    imageUrl: null
+  };
+
+  return (
+    <div className="group flex flex-col cursor-pointer" onClick={() => onSelect(template.id)}>
+      {/* Live Preview Container (Scaled Down) */}
+      <div 
+        className="relative bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 mb-3"
+        style={{ aspectRatio: template.aspectRatio || '5/7' }}
+      >
+        {/* Heart Icon Overlay */}
+        <div className="absolute top-3 right-3 z-20 bg-white/80 p-2 rounded-full hover:bg-white transition-colors cursor-pointer backdrop-blur-sm">
+          <Heart className="w-4 h-4 text-gray-400 hover:text-rose-500 hover:fill-current transition-colors" />
+        </div>
+
+        {/* The Live Component (Scaled) */}
+        {/* Force size for thumbnail consistency */}
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white" style={{ containerType: 'size' }}>
+           <div className="w-full h-full transform scale-75 origin-center">
+             <Component data={dummyData} />
+           </div>
+        </div>
+        
+        {/* Hover Overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors z-10" />
+      </div>
+
+      {/* Product Details */}
+      <div className="px-1">
+        <h3 className="font-bold text-slate-900 text-sm truncate">{template.name}</h3>
+        <p className="text-xs text-gray-500 mb-2">{template.category} Collection</p>
+        
+        <div className="flex items-center justify-between">
+           <div className="flex -space-x-1">
+             {template.colors.slice(0, 4).map((c, i) => (
+               <div key={i} className="w-4 h-4 rounded-full border border-white ring-1 ring-gray-100 shadow-sm" style={{ backgroundColor: c }} />
+             ))}
+           </div>
+           <button className="text-xs font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block hover:underline">
+             Customize
+           </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * ------------------------------------------------------------------
+ * 4. MAIN APPLICATION (THE WIZARD)
+ * ------------------------------------------------------------------
+ */
+const App = () => {
+  const [activeTemplateId, setActiveTemplateId] = useState("greengeo");
+  const [formData, setFormData] = useState(DEFAULT_DATA);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isMobilePreviewOpen, setIsMobilePreviewOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [toastMessage, setToastMessage] = useState(null);
+  
+  const totalSteps = 5;
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        handleInputChange('imageUrl', reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const nextStep = () => {
+    if (currentStep < totalSteps) setCurrentStep(curr => curr + 1);
+  };
+
+  const prevStep = () => {
+    if (currentStep > 1) setCurrentStep(curr => curr - 1);
+  };
+
+  const handleTemplateSelect = (id) => {
+    setActiveTemplateId(id);
+    nextStep(); 
+  };
+
+  const handleSave = () => {
+    showToast("Design saved to your library!");
+  };
+
+  const activeTemplate = TEMPLATES.find(t => t.id === activeTemplateId);
+  const ActiveComponent = activeTemplate?.component || ClassicTemplate;
+
+  // --- Step 1: The Marketplace View ---
+  if (currentStep === 1) {
+    return (
+      <div className="min-h-screen bg-white font-sans text-slate-800 flex flex-col">
+        <FontLoader />
+        {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+        
+        {/* Marketplace Header */}
+        <header className="border-b border-gray-200 bg-white sticky top-0 z-50">
+      
+          
+          {/* Categories Bar */}
+          <div className="border-t border-gray-100">
+             <div className="max-w-7xl mx-auto px-4 overflow-x-auto no-scrollbar py-4">
+                <div className="flex gap-6 md:gap-8 min-w-max justify-start">
+                  {/* "New" Circle */}
+                  <div className="flex flex-col items-center gap-2 cursor-pointer group" onClick={() => setSelectedCategory('all')}>
+                     <div className={`w-16 h-16 rounded-full flex items-center justify-center text-sm font-bold transition-all ${selectedCategory === 'all' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500 ring-offset-2 scale-105' : 'bg-blue-50 text-blue-600 group-hover:bg-blue-100'}`}>
+                       New
+                     </div>
+                     <span className={`text-xs font-medium ${selectedCategory === 'all' ? 'text-black' : 'text-gray-500'}`}>New Collection</span>
+                  </div>
+
+                  {CATEGORIES.slice(1).map(cat => (
+                     <div key={cat.id} className="flex flex-col items-center gap-2 cursor-pointer group" onClick={() => setSelectedCategory(cat.id)}>
+                        <div className={`w-16 h-16 rounded-full overflow-hidden border-2 transition-all ${selectedCategory === cat.id ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2 scale-105' : 'border-transparent group-hover:border-gray-300'}`}>
+                           <img src={cat.icon} alt={cat.label} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                        </div>
+                        <span className={`text-xs font-medium ${selectedCategory === cat.id ? 'text-black' : 'text-gray-500'}`}>{cat.label}</span>
+                     </div>
+                  ))}
+                </div>
+             </div>
+          </div>
+        </header>
+
+        {/* Marketplace Body */}
+        <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
+            {/* Sidebar Filters */}
+            <aside className="w-64 hidden lg:block shrink-0 space-y-8">
+               <div>
+                  <h3 className="font-bold text-sm mb-4 flex items-center justify-between text-slate-900">Format <ChevronLeft className="w-4 h-4 rotate-90" /></h3>
+                  <div className="space-y-3">
+                     <label className="flex items-center gap-3 text-sm text-gray-600 cursor-pointer hover:text-black group">
+                        <input type="checkbox" className="rounded border-gray-300 text-slate-900 focus:ring-slate-900 w-4 h-4" />
+                        <span className="group-hover:translate-x-1 transition-transform">Standard</span>
+                     </label>
+                     <label className="flex items-center gap-3 text-sm text-gray-600 cursor-pointer hover:text-black group">
+                        <input type="checkbox" className="rounded border-gray-300 text-slate-900 focus:ring-slate-900 w-4 h-4" />
+                        <span className="group-hover:translate-x-1 transition-transform">All-in-One</span>
+                     </label>
+                  </div>
+               </div>
+            </aside>
+
+            {/* Grid Content */}
+            <div className="flex-1">
+               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+                  <h2 className="text-xl md:text-2xl font-bold font-serif">Wedding Invitations <span className="text-gray-400 font-sans font-normal text-sm ml-2 align-middle">{TEMPLATES.length} designs</span></h2>
+                  <button className="flex items-center gap-2 text-sm font-bold border border-gray-300 px-5 py-2.5 rounded-full hover:bg-gray-50 transition-colors w-full sm:w-auto justify-center">
+                    Sort: Featured <ChevronLeft className="w-4 h-4 -rotate-90" />
+                  </button>
+               </div>
+
+               <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-12">
+                  {TEMPLATES.filter(t => selectedCategory === 'all' || t.category.toLowerCase().includes(selectedCategory.toLowerCase()) || (selectedCategory === 'floral' && t.category === 'Floral')).map(t => (
+                    <ProductCard key={t.id} template={t} onSelect={handleTemplateSelect} />
+                  ))}
+               </div>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Steps 2-5: The Customization Wizard ---
+  return (
+    <div className="fixed inset-0 bg-gray-50 flex flex-col font-sans text-slate-800 overflow-hidden">
+      <FontLoader />
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+      
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-4 flex justify-between items-center z-50 shadow-sm h-16 shrink-0">
+        <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentStep(1)}>
+          <Heart className="w-6 h-6 text-rose-500 fill-current" />
+          <h1 className="text-lg md:text-xl font-bold tracking-tight hidden sm:block">KnotClone</h1>
+        </div>
+        
+        {/* Mobile Tabs */}
+        <div className="flex bg-gray-100 rounded-lg p-1 md:hidden">
+          <button 
+            onClick={() => setIsMobilePreviewOpen(false)}
+            className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm ${!isMobilePreviewOpen ? 'bg-white text-black' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Edit
+          </button>
+          <button 
+             onClick={() => setIsMobilePreviewOpen(true)}
+             className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm ${isMobilePreviewOpen ? 'bg-white text-black' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Preview
+          </button>
+        </div>
+
+        <div className="text-sm font-medium text-gray-500 hidden md:block">
+           Customizing: <span className="text-slate-900 font-bold ml-1">{activeTemplate?.name}</span>
+        </div>
+        
+        <div className="flex gap-3">
+             <button className="text-xs font-bold text-gray-500 uppercase tracking-wider px-4 py-2 hover:bg-gray-100 rounded-full transition-colors hidden sm:block" onClick={() => setCurrentStep(1)}>Cancel</button>
+             <button onClick={handleSave} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2 rounded-full text-xs font-bold tracking-wider whitespace-nowrap shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5">
+               Save Design
+             </button>
+        </div>
+      </header>
+
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        {/* LEFT PANEL: Wizard Form */}
+        <aside className={`w-full md:w-[480px] bg-white border-r border-gray-200 flex flex-col z-20 shadow-2xl md:shadow-none absolute inset-0 md:relative transition-transform duration-300 ease-in-out ${isMobilePreviewOpen ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
+          <div className="px-6 md:px-8 pt-8 pb-6">
+             <StepIndicator currentStep={currentStep} totalSteps={totalSteps} />
+          </div>
+
+          <div className="flex-1 px-6 md:px-8 overflow-y-auto">
+            {currentStep === 2 && (
+              <div className="animate-fadeIn pb-24 md:pb-0">
+                <h3 className="text-2xl font-bold text-slate-800 mb-2 font-serif">The Happy Couple</h3>
+                <p className="text-sm text-gray-500 mb-8">Who is tying the knot? This will appear prominently.</p>
+                <div className="grid grid-cols-1 gap-6">
+                  <FormInput label="Bride Name" value={formData.bride} onChange={(e) => handleInputChange('bride', e.target.value)} placeholder="e.g. Sara" />
+                  <FormInput label="Groom Name" value={formData.groom} onChange={(e) => handleInputChange('groom', e.target.value)} placeholder="e.g. Nahom" />
+                </div>
+                <div className="mt-8 border-t border-gray-100 pt-8">
+                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Date & Time</h3>
+                   <div className="grid grid-cols-2 gap-4">
+                     <FormInput type="date" label="Date" value={formData.date} onChange={(e) => handleInputChange('date', e.target.value)} />
+                     <FormInput type="text" label="Time" value={formData.time} onChange={(e) => handleInputChange('time', e.target.value)} placeholder="e.g. 10:00 AM" />
+                   </div>
+                </div>
+              </div>
+            )}
+            {currentStep === 3 && (
+              <div className="animate-fadeIn pb-24 md:pb-0">
+                <h3 className="text-2xl font-bold text-slate-800 mb-2 font-serif">Venue & Details</h3>
+                <p className="text-sm text-gray-500 mb-8">Let your guests know where the magic happens.</p>
+                <FormInput label="Venue / Location" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="e.g. Skylight Hotel, Addis Ababa" />
+                <FormInput type="textarea" label="Welcome Message" value={formData.message} onChange={(e) => handleInputChange('message', e.target.value)} placeholder="Request the pleasure of your company..." />
+              </div>
+            )}
+            {currentStep === 4 && (
+              <div className="animate-fadeIn pb-24 md:pb-0">
+                <h3 className="text-2xl font-bold text-slate-800 mb-2 font-serif">Add a Photo</h3>
+                <p className="text-sm text-gray-500 mb-8">Personalize it with a beautiful shot.</p>
+                <div className="border-2 border-dashed border-gray-300 rounded-2xl p-10 flex flex-col items-center justify-center bg-gray-50 hover:bg-blue-50 hover:border-blue-300 transition-all text-center group cursor-pointer relative">
+                   <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleImageUpload} />
+                   {formData.imageUrl ? (
+                     <div className="relative w-full">
+                        <img src={formData.imageUrl} alt="Preview" className="w-40 h-40 object-cover rounded-xl mx-auto shadow-lg mb-4 transform group-hover:scale-105 transition-transform" />
+                        <span className="text-red-500 text-sm font-bold bg-white px-3 py-1 rounded-full shadow-sm">Click to Change</span>
+                     </div>
+                   ) : (
+                     <>
+                        <div className="w-16 h-16 bg-white text-blue-600 rounded-full flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform"><ImageIcon className="w-8 h-8" /></div>
+                        <span className="text-slate-800 font-bold text-lg">Click to upload</span>
+                        <span className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</span>
+                     </>
+                   )}
+                </div>
+              </div>
+            )}
+            {currentStep === 5 && (
+              <div className="animate-fadeIn text-center py-10 pb-24 md:pb-0">
+                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm animate-pulse"><Check className="w-12 h-12" /></div>
+                <h3 className="text-3xl font-bold text-slate-800 mb-3 font-serif">All Set!</h3>
+                <p className="text-gray-500 mb-10 max-w-xs mx-auto">Your invitation is ready to be shared with the world.</p>
+                <div className="space-y-4 max-w-xs mx-auto">
+                  <button onClick={() => showToast("Downloading image...")} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all flex items-center justify-center gap-3">
+                    <Download className="w-5 h-5" /> Download Image
+                  </button>
+                  <button onClick={() => showToast("Link copied to clipboard!")} className="w-full py-4 bg-white border border-gray-200 text-slate-700 rounded-xl font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-3">
+                    <Copy className="w-5 h-5" /> Copy Link
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t border-gray-100 bg-white flex justify-between items-center absolute bottom-0 w-full md:relative z-20">
+            <button onClick={prevStep} disabled={currentStep === 1} className={`flex items-center gap-2 text-sm font-bold px-6 py-3 rounded-full transition-colors ${currentStep === 1 ? 'text-gray-300' : 'text-slate-600 hover:bg-gray-100'}`}>
+              <ChevronLeft className="w-4 h-4" /> Back
+            </button>
+            {currentStep < totalSteps && (
+              <button onClick={nextStep} className="flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                Next Step <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </aside>
+
+        {/* RIGHT PANEL: Live Preview */}
+        <section className={`flex-1 bg-gray-100/50 relative flex items-center justify-center p-4 md:p-12 overflow-y-auto absolute inset-0 md:relative transition-transform duration-300 ease-in-out ${isMobilePreviewOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+          <div className="flex flex-col items-center justify-center w-full h-full pb-24 md:pb-0">
+             {/* DYNAMIC ASPECT RATIO CONTAINER
+                We use the `aspectRatio` property from the active template. 
+                If it's undefined, we fallback to 5/7.
+                This ensures the container fits the background image perfectly.
+             */}
+            <div 
+              className="w-full max-w-[360px] md:max-w-[500px] bg-white shadow-2xl shadow-slate-400/20 rounded-sm overflow-hidden transform transition-all duration-500 origin-center" 
+              style={{ 
+                aspectRatio: activeTemplate?.aspectRatio || '5/7',
+                containerType: 'size' 
+              }}
+            >
+              <ActiveComponent data={formData} />
+            </div>
+            <p className="mt-6 text-xs font-bold text-gray-400 uppercase tracking-[0.2em] animate-pulse">Live Preview</p>
+          </div>
+        </section>
+
+      </main>
+      
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+      `}</style>
+    </div>
+  );
+};
+
+export default App;

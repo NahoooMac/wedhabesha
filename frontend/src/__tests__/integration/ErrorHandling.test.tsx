@@ -36,7 +36,7 @@ const ToastTestComponent: React.FC = () => {
     const error = new NetworkError('Connection failed');
     showErrorToast('Network Error', error.message, {
       label: 'Retry',
-      onClick: () => console.log('Retry clicked'),
+      onClick: () => {}, // Empty function instead of console.log
     });
   };
 

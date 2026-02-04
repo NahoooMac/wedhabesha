@@ -78,8 +78,6 @@ class RealtimeHandler implements IRealtimeHandler {
                          ? window.location.origin 
                          : 'http://localhost:8000'); // Backend server port
 
-      console.log('🔌 Connecting to WebSocket server:', serverUrl);
-
       this.socket = io(serverUrl, {
         auth: { token },
         transports: ['websocket', 'polling'],
@@ -372,7 +370,6 @@ class RealtimeHandler implements IRealtimeHandler {
 
     // Connection events
     this.socket.on('connect', () => {
-      console.log('✅ WebSocket connected');
       this.connectionState.isConnected = true;
       this.connectionState.isConnecting = false;
       this.connectionState.reconnectAttempts = 0;
@@ -389,7 +386,6 @@ class RealtimeHandler implements IRealtimeHandler {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket disconnected:', reason);
       this.connectionState.isConnected = false;
       this.connectionState.isConnecting = false;
 
@@ -531,8 +527,6 @@ class RealtimeHandler implements IRealtimeHandler {
       this.reconnectConfig.maxDelay
     );
 
-    console.log(`Scheduling reconnect in ${delay}ms (attempt ${this.connectionState.reconnectAttempts + 1})`);
-
     this.reconnectTimeout = setTimeout(() => {
       this.connectionState.reconnectAttempts++;
       this.attemptReconnect();
@@ -546,8 +540,6 @@ class RealtimeHandler implements IRealtimeHandler {
     if (this.connectionState.isConnected || this.connectionState.isConnecting) {
       return;
     }
-
-    console.log(`Attempting reconnect (${this.connectionState.reconnectAttempts}/${this.reconnectConfig.maxAttempts})`);
 
     // Get stored token
     const token = localStorage.getItem('jwt_token') || localStorage.getItem('access_token');

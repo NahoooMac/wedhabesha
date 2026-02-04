@@ -252,6 +252,54 @@ export const weddingApi = {
   // Update staff PIN
   updateStaffPin: (weddingId: number, newPin: string) =>
     apiClient.post<{ message: string; wedding_code: string }>(`/api/v1/weddings/${weddingId}/update-pin`, { new_pin: newPin }),
+  
+  // Update wedding template and customization
+  updateWeddingTemplate: (weddingId: number, templateId: string, customization: InvitationCustomization) =>
+    apiClient.put<{ message: string; wedding: Wedding }>(`/api/v1/weddings/${weddingId}/template`, { 
+      template_id: templateId, 
+      customization 
+    }),
+  
+  // Upload invitation image
+  uploadInvitationImage: async (weddingId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    // Get auth headers
+    const headers: Record<string, string> = {};
+    
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        headers.Authorization = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Failed to get Firebase token:', error);
+      }
+    }
+
+    const jwtToken = localStorage.getItem('jwt_token') || localStorage.getItem('access_token');
+    if (jwtToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${jwtToken}`;
+    }
+    
+    return fetch(`${API_BASE_URL}/api/v1/weddings/${weddingId}/upload-image`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    });
+  },
+  
+  // Update image settings (zoom/pan)
+  updateImageSettings: (weddingId: number, imageSettings: { x: number; y: number; scale: number }) =>
+    apiClient.put<{ success: boolean; message: string }>(`/api/v1/weddings/${weddingId}/image-settings`, { 
+      image_settings: imageSettings 
+    }),
 };
 
 // Guest API functions
@@ -477,6 +525,11 @@ export interface Wedding {
   expected_guests: number;
   invitation_template_id?: string;
   invitation_customization?: string;
+  template_id?: string; // New field for template system
+  customization?: InvitationCustomization; // New field for parsed customization
+  template_customization?: InvitationCustomization; // RSVP template customization
+  invitation_image_url?: string; // URL to uploaded invitation image
+  image_settings?: { x: number; y: number; scale: number }; // Image zoom/pan settings
   created_at: string;
 }
 
@@ -1086,6 +1139,14 @@ export const adminApi = {
     return apiClient.get<VendorSubscriptionsResponse>(`/api/admin/vendor-subscriptions?${params}`);
   },
 
+  // Vendor Performance Monitoring
+  getVendorPerformance: (tier?: VendorSubscriptionTier, category?: string, skip = 0, limit = 10) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (tier) params.append('tier', tier);
+    if (category) params.append('category', category);
+    return apiClient.get<VendorPerformanceResponse>(`/api/admin/vendor-performance?${params}`);
+  },
+
   getVendorSubscription: (vendorId: number) =>
     apiClient.get<VendorSubscriptionResponse>(`/api/admin/vendors/${vendorId}/subscription`),
 
@@ -1173,6 +1234,32 @@ export interface VendorSubscriptionResponse {
 
 export interface VendorSubscriptionsResponse {
   subscriptions: VendorSubscriptionResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface VendorPerformanceData {
+  vendor_id: number;
+  business_name: string;
+  category: string;
+  rating: number;
+  total_reviews: number;
+  total_leads: number;
+  converted_leads: number;
+  conversion_rate: number;
+  subscription_tier: string;
+  subscription_status: string;
+  monthly_fee: number;
+  is_verified: boolean;
+  created_at: string;
+  last_activity: string;
+  performance_score: number;
+}
+
+export interface VendorPerformanceResponse {
+  vendors: VendorPerformanceData[];
   total: number;
   skip: number;
   limit: number;
@@ -1496,6 +1583,12 @@ export interface InvitationData {
     venue_address: string;
     template_id?: string;
     customization?: InvitationCustomization;
+    invitation_image_url?: string;
+    image_settings?: {
+      x: number;
+      y: number;
+      scale: number;
+    };
   };
 }
 

@@ -10,7 +10,7 @@ class TwoFactorService {
     this.issuer = 'WeddingPlatform';
   }
 
-  // Generate 2FA secret for user
+  // Generate 2FA secret for user (authenticator method)
   async generateSecret(userId, email) {
     try {
       const secret = speakeasy.generateSecret({
@@ -37,6 +37,38 @@ class TwoFactorService {
       return {
         success: false,
         message: 'Failed to generate 2FA secret.'
+      };
+    }
+  }
+
+  // Setup 2FA with SMS method
+  async setupSMS2FA(userId, phone) {
+    try {
+      // Generate and send SMS OTP
+      const otpResult = await otpService.generateAndSendOTP(phone, '2FA_SETUP', userId);
+      
+      if (!otpResult.success) {
+        return otpResult;
+      }
+
+      // Update user's 2FA method preference
+      await query(`
+        UPDATE users 
+        SET two_factor_method = 'sms'
+        WHERE id = $1
+      `, [userId]);
+
+      return {
+        success: true,
+        message: 'SMS verification code sent to your phone.',
+        otpId: otpResult.otpId
+      };
+
+    } catch (error) {
+      console.error('Setup SMS 2FA error:', error);
+      return {
+        success: false,
+        message: 'Failed to setup SMS 2FA.'
       };
     }
   }
@@ -86,12 +118,12 @@ class TwoFactorService {
     }
   }
 
-  // Enable 2FA for user
-  async enable2FA(userId, phone, totpToken, ipAddress = null, userAgent = null) {
+  // Enable 2FA for user (supports both authenticator and SMS)
+  async enable2FA(userId, phone, token, method = 'authenticator', ipAddress = null, userAgent = null) {
     try {
-      // Get user's secret and email
+      // Get user's information
       const userResult = await query(`
-        SELECT two_factor_secret, two_factor_enabled, email 
+        SELECT two_factor_secret, two_factor_enabled, email, two_factor_method
         FROM users 
         WHERE id = $1
       `, [userId]);
@@ -105,13 +137,6 @@ class TwoFactorService {
 
       const user = userResult.rows[0];
 
-      if (!user.two_factor_secret) {
-        return {
-          success: false,
-          message: '2FA secret not found. Please start the setup process again.'
-        };
-      }
-
       if (user.two_factor_enabled) {
         return {
           success: false,
@@ -119,20 +144,50 @@ class TwoFactorService {
         };
       }
 
-      // Verify TOTP token
-      const isValidToken = this.verifyToken(user.two_factor_secret, totpToken);
-      if (!isValidToken) {
-        // Log failed attempt
-        await otpService.logSecurityEvent(userId, '2fa_setup_failed', {
-          ip_address: ipAddress,
-          user_agent: userAgent,
-          reason: 'invalid_totp_token'
-        });
+      let isValidToken = false;
 
-        return {
-          success: false,
-          message: 'Invalid verification code. Please check your authenticator app and try again.'
-        };
+      if (method === 'sms') {
+        // Verify SMS OTP
+        const otpResult = await otpService.verifyOTP(phone, token, '2FA_SETUP');
+        isValidToken = otpResult.success;
+        
+        if (!isValidToken) {
+          await otpService.logSecurityEvent(userId, '2fa_setup_failed', {
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            method: 'sms',
+            reason: 'invalid_sms_otp'
+          });
+
+          return {
+            success: false,
+            message: 'Invalid SMS verification code. Please try again.'
+          };
+        }
+      } else {
+        // Verify TOTP token for authenticator method
+        if (!user.two_factor_secret) {
+          return {
+            success: false,
+            message: '2FA secret not found. Please start the setup process again.'
+          };
+        }
+
+        isValidToken = this.verifyToken(user.two_factor_secret, token);
+        
+        if (!isValidToken) {
+          await otpService.logSecurityEvent(userId, '2fa_setup_failed', {
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            method: 'authenticator',
+            reason: 'invalid_totp_token'
+          });
+
+          return {
+            success: false,
+            message: 'Invalid verification code. Please check your authenticator app and try again.'
+          };
+        }
       }
 
       // Generate backup codes
@@ -144,32 +199,52 @@ class TwoFactorService {
         };
       }
 
-      // Enable 2FA
+      // Enable 2FA with the chosen method
       await query(`
         UPDATE users 
-        SET two_factor_enabled = 1 
+        SET two_factor_enabled = 1, two_factor_method = $2
         WHERE id = $1
-      `, [userId]);
+      `, [userId, method]);
 
-      // Send backup codes via SMS
-      const backupCodesText = backupCodesResult.backupCodes.join(', ');
-      const message = `Your WedHabesha 2FA backup codes: ${backupCodesText}. Save these codes securely. Each code can only be used once.`;
-      await smsService.sendSMS(phone, message);
+      // Send backup codes via SMS (only if phone number is available)
+      const methodText = method === 'sms' ? 'SMS' : 'Authenticator App';
+      
+      if (phone && phone !== null && phone !== undefined && String(phone).trim()) {
+        try {
+          const backupCodesText = backupCodesResult.backupCodes.join(', ');
+          const message = `Your WedHabesha 2FA backup codes: ${backupCodesText}. Save these codes securely. Each code can only be used once.`;
+          const smsResult = await smsService.sendSMS(phone, message);
+          
+          if (!smsResult.success) {
+            console.warn('Failed to send backup codes via SMS:', smsResult.error);
+          }
 
-      // Send security alert via SMS
-      const alertMessage = `2FA has been enabled on your WedHabesha account. If this wasn't you, contact support immediately.`;
-      await smsService.sendSMS(phone, alertMessage);
+          // Send security alert via SMS
+          const alertMessage = `2FA (${methodText}) has been enabled on your WedHabesha account. If this wasn't you, contact support immediately.`;
+          const alertResult = await smsService.sendSMS(phone, alertMessage);
+          
+          if (!alertResult.success) {
+            console.warn('Failed to send security alert via SMS:', alertResult.error);
+          }
+        } catch (error) {
+          console.warn('Error sending SMS notifications:', error.message);
+        }
+      } else {
+        console.warn('Phone number not available for SMS notifications');
+      }
 
       // Log security event
       await otpService.logSecurityEvent(userId, '2fa_enabled', {
         ip_address: ipAddress,
-        user_agent: userAgent
+        user_agent: userAgent,
+        method: method
       });
 
       return {
         success: true,
-        message: '2FA enabled successfully! Backup codes have been sent to your phone.',
-        backupCodes: backupCodesResult.backupCodes
+        message: `2FA enabled successfully with ${methodText}! Backup codes have been sent to your phone.`,
+        backupCodes: backupCodesResult.backupCodes,
+        method: method
       };
 
     } catch (error) {
@@ -247,8 +322,20 @@ class TwoFactorService {
       `, [userId]);
 
       // Send security alert via SMS
-      const alertMessage = `2FA has been disabled on your WedHabesha account. If this wasn't you, contact support immediately.`;
-      await smsService.sendSMS(phone, alertMessage);
+      if (phone && phone !== null && phone !== undefined && String(phone).trim()) {
+        try {
+          const alertMessage = `2FA has been disabled on your WedHabesha account. If this wasn't you, contact support immediately.`;
+          const alertResult = await smsService.sendSMS(phone, alertMessage);
+          
+          if (!alertResult.success) {
+            console.warn('Failed to send security alert via SMS:', alertResult.error);
+          }
+        } catch (error) {
+          console.warn('Error sending SMS security alert:', error.message);
+        }
+      } else {
+        console.warn('Phone number not available for SMS security alert');
+      }
 
       // Log security event
       await otpService.logSecurityEvent(userId, '2fa_disabled', {
@@ -270,12 +357,12 @@ class TwoFactorService {
     }
   }
 
-  // Verify 2FA during login
+  // Verify 2FA during login (supports both methods)
   async verifyLogin2FA(userId, token, ipAddress = null, userAgent = null) {
     try {
       // Get user's 2FA settings and phone
       const userResult = await query(`
-        SELECT two_factor_secret, two_factor_enabled, email, phone
+        SELECT two_factor_secret, two_factor_enabled, two_factor_method, email, phone
         FROM users 
         WHERE id = $1
       `, [userId]);
@@ -303,7 +390,8 @@ class TwoFactorService {
           // Log successful backup code login
           await otpService.logSecurityEvent(userId, '2fa_backup_code_login', {
             ip_address: ipAddress,
-            user_agent: userAgent
+            user_agent: userAgent,
+            method: user.two_factor_method
           });
 
           return {
@@ -316,48 +404,57 @@ class TwoFactorService {
         }
       }
 
-      // Check if this is a test phone number using fixed OTP
-      if (user.phone && otpService.isTestPhoneNumber(user.phone) && token === '123456') {
-        // Using fixed OTP verification for test number
-        
-        // Log successful test 2FA login
-        await otpService.logSecurityEvent(userId, '2fa_login_success', {
-          ip_address: ipAddress,
-          user_agent: userAgent,
-          test_mode: true
-        });
+      let isValidToken = false;
 
-        return {
-          success: true,
-          message: '2FA verification successful (test mode).'
-        };
+      if (user.two_factor_method === 'sms') {
+        // For SMS method, verify the OTP
+        if (user.phone && otpService.isTestPhoneNumber(user.phone) && token === '123456') {
+          // Test phone number with fixed OTP
+          isValidToken = true;
+        } else {
+          // Verify SMS OTP
+          const otpResult = await otpService.verifyOTP(user.phone, token, '2FA_LOGIN');
+          isValidToken = otpResult.success;
+        }
+      } else {
+        // For authenticator method, verify TOTP
+        if (user.phone && otpService.isTestPhoneNumber(user.phone) && token === '123456') {
+          // Test phone number with fixed OTP
+          isValidToken = true;
+        } else {
+          // Verify TOTP token
+          isValidToken = this.verifyToken(user.two_factor_secret, token);
+        }
       }
 
-      // Verify TOTP token for non-test numbers
-      const isValidToken = this.verifyToken(user.two_factor_secret, token);
       if (!isValidToken) {
         // Log failed attempt
         await otpService.logSecurityEvent(userId, '2fa_login_failed', {
           ip_address: ipAddress,
           user_agent: userAgent,
+          method: user.two_factor_method,
           provided_token: token.substring(0, 2) + '****' // Partial token for logging
         });
 
+        const methodText = user.two_factor_method === 'sms' ? 'SMS code' : 'authenticator code';
         return {
           success: false,
-          message: 'Invalid verification code.'
+          message: `Invalid ${methodText}.`
         };
       }
 
       // Log successful 2FA login
       await otpService.logSecurityEvent(userId, '2fa_login_success', {
         ip_address: ipAddress,
-        user_agent: userAgent
+        user_agent: userAgent,
+        method: user.two_factor_method,
+        test_mode: user.phone && otpService.isTestPhoneNumber(user.phone)
       });
 
       return {
         success: true,
-        message: '2FA verification successful.'
+        message: '2FA verification successful.',
+        method: user.two_factor_method
       };
 
     } catch (error) {
@@ -373,7 +470,7 @@ class TwoFactorService {
   async get2FAStatus(userId) {
     try {
       const userResult = await query(`
-        SELECT two_factor_enabled, 
+        SELECT two_factor_enabled, two_factor_method,
                CASE WHEN two_factor_secret IS NOT NULL THEN 1 ELSE 0 END as has_secret
         FROM users 
         WHERE id = $1
@@ -401,6 +498,7 @@ class TwoFactorService {
       return {
         success: true,
         enabled: Boolean(user.two_factor_enabled),
+        method: user.two_factor_method || 'authenticator',
         hasSecret: Boolean(user.has_secret),
         backupCodes: {
           total: parseInt(backupCodes.total_codes),
@@ -422,7 +520,7 @@ class TwoFactorService {
     try {
       // Verify current password and 2FA token
       const userResult = await query(`
-        SELECT password_hash, two_factor_secret, two_factor_enabled, email 
+        SELECT password_hash, two_factor_secret, two_factor_enabled, two_factor_method, email 
         FROM users 
         WHERE id = $1
       `, [userId]);
@@ -453,8 +551,15 @@ class TwoFactorService {
         };
       }
 
-      // Verify TOTP token
-      const isValidToken = this.verifyToken(user.two_factor_secret, totpToken);
+      // Verify token based on method
+      let isValidToken = false;
+      if (user.two_factor_method === 'sms') {
+        const otpResult = await otpService.verifyOTP(phone, totpToken, '2FA_SETUP');
+        isValidToken = otpResult.success;
+      } else {
+        isValidToken = this.verifyToken(user.two_factor_secret, totpToken);
+      }
+
       if (!isValidToken) {
         return {
           success: false,
@@ -469,13 +574,26 @@ class TwoFactorService {
       }
 
       // Send new backup codes via SMS
-      const backupCodesText = backupCodesResult.backupCodes.join(', ');
-      const message = `Your new WedHabesha 2FA backup codes: ${backupCodesText}. Save these codes securely. Each code can only be used once.`;
-      await smsService.sendSMS(phone, message);
+      if (phone && phone !== null && phone !== undefined && String(phone).trim()) {
+        try {
+          const backupCodesText = backupCodesResult.backupCodes.join(', ');
+          const message = `Your new WedHabesha 2FA backup codes: ${backupCodesText}. Save these codes securely. Each code can only be used once.`;
+          const smsResult = await smsService.sendSMS(phone, message);
+          
+          if (!smsResult.success) {
+            console.warn('Failed to send new backup codes via SMS:', smsResult.error);
+          }
+        } catch (error) {
+          console.warn('Error sending new backup codes via SMS:', error.message);
+        }
+      } else {
+        console.warn('Phone number not available for SMS backup codes');
+      }
 
       // Log security event
       await otpService.logSecurityEvent(userId, '2fa_backup_codes_regenerated', {
-        ip_address: ipAddress
+        ip_address: ipAddress,
+        method: user.two_factor_method
       });
 
       return {
@@ -489,6 +607,56 @@ class TwoFactorService {
       return {
         success: false,
         message: 'Failed to regenerate backup codes.'
+      };
+    }
+  }
+
+  // Send SMS OTP for login (for SMS 2FA method)
+  async sendLoginSMS(userId) {
+    try {
+      // Get user's phone and 2FA method
+      const userResult = await query(`
+        SELECT phone, two_factor_enabled, two_factor_method
+        FROM users 
+        WHERE id = $1
+      `, [userId]);
+
+      if (userResult.rows.length === 0) {
+        return {
+          success: false,
+          message: 'User not found.'
+        };
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.two_factor_enabled || user.two_factor_method !== 'sms') {
+        return {
+          success: false,
+          message: 'SMS 2FA is not enabled for this account.'
+        };
+      }
+
+      if (!user.phone) {
+        return {
+          success: false,
+          message: 'No phone number found for SMS 2FA.'
+        };
+      }
+
+      // Generate and send SMS OTP
+      const otpResult = await otpService.generateAndSendOTP(user.phone, '2FA_LOGIN', userId);
+      
+      return {
+        success: otpResult.success,
+        message: otpResult.success ? 'SMS verification code sent to your phone.' : otpResult.message
+      };
+
+    } catch (error) {
+      console.error('Send login SMS error:', error);
+      return {
+        success: false,
+        message: 'Failed to send SMS verification code.'
       };
     }
   }

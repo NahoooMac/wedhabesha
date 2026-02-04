@@ -18,6 +18,7 @@ import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { AnalyticsProvider } from '../contexts/AnalyticsContext';
 import { weddingApi, WeddingCreateResponse } from '../lib/api';
 import { Sun, Moon } from 'lucide-react';
+import TwoFactorWarningBanner from '../components/shared/TwoFactorWarningBanner';
 
 // Icon Components matching the uploaded design
 const Icons = {
@@ -366,6 +367,9 @@ const DashboardPage: React.FC = () => {
             </div>
           ) : (
             <div className="max-w-7xl mx-auto space-y-6">
+              {/* 2FA Warning Banner */}
+              <TwoFactorWarningBanner />
+              
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   {/* Stats Cards - Enhanced with dark mode and hover effects */}
@@ -539,7 +543,8 @@ const DashboardPage: React.FC = () => {
               {activeTab === 'analytics' && (
                 <UnifiedAnalyticsDashboard weddingId={currentWedding.id} />
               )}
-              {activeTab === 'settings' && <UniversalSettings userType="USER" darkMode={darkMode} setDarkMode={setDarkMode} />}
+              {activeTab === 'settings' && user?.user_type === 'COUPLE' && <ProfileSettings />}
+              {activeTab === 'settings' && user?.user_type !== 'COUPLE' && <UniversalSettings userType="USER" darkMode={darkMode} setDarkMode={setDarkMode} />}
             </div>
           )}
         </main>

@@ -1,702 +1,438 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, AlignCenter, AlignLeft, AlignRight } from 'lucide-react';
-import { invitationApi, InvitationCustomization } from '../../lib/api';
-
-// Version: 4.0.0 - Per-Section Styling with Enhanced Controls
+import React, { useState, useRef } from 'react';
+import { 
+  X, Check, ChevronLeft, ChevronRight, Download, CalendarCheck, 
+  ImageIcon, Move, Save
+} from 'lucide-react';
+import { InvitationEngine, RSVPInvitationData, TEMPLATE_METADATA } from './InvitationEngine';
+import { weddingApi } from '../../lib/api';
+import html2canvas from 'html2canvas';
 
 interface TemplateCustomizerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  weddingId: number;
   templateId: string;
-  currentCustomization?: InvitationCustomization;
-  onSave: () => void;
+  weddingId: number;
+  initialData?: RSVPInvitationData;
+  onSave?: (data: RSVPInvitationData) => void;
 }
 
-// Decorative fonts for wedding invitations
-const DECORATIVE_FONTS = [
-  { value: 'Playfair Display', label: 'Playfair Display', category: 'Elegant Serif' },
-  { value: 'Great Vibes', label: 'Great Vibes', category: 'Script' },
-  { value: 'Dancing Script', label: 'Dancing Script', category: 'Script' },
-  { value: 'Pacifico', label: 'Pacifico', category: 'Handwritten' },
-  { value: 'Cinzel', label: 'Cinzel', category: 'Elegant Serif' },
-  { value: 'Cormorant Garamond', label: 'Cormorant Garamond', category: 'Elegant Serif' },
-  { value: 'Satisfy', label: 'Satisfy', category: 'Script' },
-  { value: 'Alex Brush', label: 'Alex Brush', category: 'Script' },
-  { value: 'Allura', label: 'Allura', category: 'Script' },
-  { value: 'Tangerine', label: 'Tangerine', category: 'Script' },
-  { value: 'Pinyon Script', label: 'Pinyon Script', category: 'Script' },
-  { value: 'Italiana', label: 'Italiana', category: 'Elegant Serif' },
-  { value: 'Montserrat', label: 'Montserrat', category: 'Modern Sans' },
-  { value: 'Raleway', label: 'Raleway', category: 'Modern Sans' },
-  { value: 'Lato', label: 'Lato', category: 'Modern Sans' }
-];
-
-// Color options for text
-const colorOptions = [
-  { value: '#FFFFFF', label: 'White' },
-  { value: '#000000', label: 'Black' },
-  { value: '#8B4513', label: 'Brown' },
-  { value: '#FFD700', label: 'Gold' },
-  { value: '#C0C0C0', label: 'Silver' },
-  { value: '#4A5568', label: 'Gray' },
-  { value: '#2D3748', label: 'Dark Gray' },
-  { value: '#E53E3E', label: 'Red' }
-];
-
-// Enhanced Text Element with alignment and offset
-interface TextElement {
-  id: string;
-  label: string;
-  font: string;
-  color: string;
-  size: number;
-  align: 'left' | 'center' | 'right';
-  yOffset: number;
-}
-
-// Extended customization with individual text elements
-interface ExtendedCustomization extends InvitationCustomization {
-  textElements?: {
-    title: TextElement;
-    guestName: TextElement;
-    message: TextElement;
-    details: TextElement;
-  };
-}
-
-export const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
-  isOpen,
-  onClose,
-  weddingId,
-  templateId: templateIdProp,
-  currentCustomization,
-  onSave
+const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
+  isOpen, onClose, templateId, weddingId, initialData, onSave
 }) => {
-  const templateId = templateIdProp || 'template-1';
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  // Initialize text elements with defaults
-  const [textElements, setTextElements] = useState<ExtendedCustomization['textElements']>({
-    title: { id: 'title', label: 'Wedding Title', font: 'Playfair Display', color: '#FFFFFF', size: 32, align: 'center', yOffset: 0 },
-    guestName: { id: 'guestName', label: 'Guest Name', font: 'Lato', color: '#FFFFFF', size: 22, align: 'center', yOffset: 0 },
-    message: { id: 'message', label: 'Custom Message', font: 'Lato', color: '#FFFFFF', size: 22, align: 'center', yOffset: 0 },
-    details: { id: 'details', label: 'Event Details', font: 'Lato', color: '#FFFFFF', size: 16, align: 'center', yOffset: 0 }
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<RSVPInvitationData>(initialData || {
+    bride: "Alice",
+    groom: "Bob",
+    ceremony_date: "2024-12-25",
+    ceremony_time: "14:00",
+    venue_name: "Grand Hotel",
+    venue_address: "123 Main St",
+    custom_message: "Join us for our wedding",
+    imageSettings: { x: 0, y: 0, scale: 1 }
   });
-  
-  const [customization, setCustomization] = useState<InvitationCustomization>({
-    wedding_title: '',
-    ceremony_date: '',
-    ceremony_time: '',
-    venue_name: '',
-    venue_address: '',
-    custom_message: 'Join us for our special day',
-    text_color: '#FFFFFF',
-    font_size: 'medium',
-    text_position: 'center',
-    text_y_position: 40,
-    qr_position: 'bottom-center'
-  });
-  
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
-  const [activeSection, setActiveSection] = useState<string>('title');
-  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const invitationRef = useRef<HTMLDivElement>(null);
 
-  // Load Google Fonts
-  useEffect(() => {
-    if (!isOpen) return;
-    
-    const link = document.createElement('link');
-    link.href = `https://fonts.googleapis.com/css2?family=${DECORATIVE_FONTS.map(f => f.value.replace(/ /g, '+')).join('&family=')}&display=swap`;
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
-    
-    link.onload = () => {
-      setFontsLoaded(true);
-    };
-    
-    return () => {
-      document.head.removeChild(link);
-    };
-  }, [isOpen]);
+  const totalSteps = 5;
+  const activeTemplate = TEMPLATE_METADATA.find(t => t.id === templateId);
 
-  useEffect(() => {
-    if (currentCustomization) {
-      setCustomization(currentCustomization);
-      if ((currentCustomization as ExtendedCustomization).textElements) {
-        setTextElements((currentCustomization as ExtendedCustomization).textElements!);
+  const handleInputChange = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Show preview immediately
+      const reader = new FileReader();
+      reader.onloadend = () => handleInputChange('imageUrl', reader.result);
+      reader.readAsDataURL(file);
+      
+      // Upload to server
+      try {
+        const response = await weddingApi.uploadInvitationImage(weddingId, file);
+        console.log('Image uploaded successfully:', response);
+        // Store the server URL as well
+        handleInputChange('serverImageUrl', response.image_url);
+      } catch (error) {
+        console.error('Failed to upload image:', error);
+        alert('Failed to upload image to server. The image will only be visible in preview.');
       }
     }
-  }, [currentCustomization]);
-
-  // Load background image
-  useEffect(() => {
-    if (!isOpen) return;
-    
-    const templateImageMap: Record<string, string> = {
-      'template-1': '/templates/Bg T1.jpg',
-      'template-2': '/templates/Bg T2.jpg',
-      'template-3': '/templates/Bg T3.jpg',
-      'template-4': '/templates/Bg T4.jpg',
-      'template-5': '/templates/Bg T5.jpg',
-      'template-6': '/templates/Bg T6.jpg',
-      'template-7': '/templates/Bg T7.jpg',
-      'template-8': '/templates/Bg T8.jpg',
-      'template-9': '/templates/Bg T9.jpg',
-      'template-10': '/templates/Bg T10.jpg',
-    };
-    
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = templateImageMap[templateId] || templateImageMap['template-1'];
-    
-    img.onload = () => {
-      setBackgroundImage(img);
-    };
-    
-    img.onerror = (e) => {
-      console.error('Failed to load background image:', e);
-    };
-  }, [templateId, isOpen]);
-
-  // Draw preview canvas
-  useEffect(() => {
-    if (!canvasRef.current || !backgroundImage || !isOpen || !fontsLoaded) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d')!;
-    
-    canvas.width = 540;
-    canvas.height = 960;
-    
-    ctx.clearRect(0, 0, 540, 960);
-    ctx.drawImage(backgroundImage, 0, 0, 540, 960);
-    
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.fillRect(0, 0, 540, 960);
-    
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowBlur = 2;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-    
-    const baseY = (customization.text_y_position || 40) / 100 * 960;
-    let y = baseY;
-    
-    // Title
-    const titleElement = textElements?.title;
-    if (titleElement) {
-      ctx.fillStyle = titleElement.color;
-      ctx.font = `bold ${titleElement.size}px "${titleElement.font}", serif`;
-      ctx.textAlign = titleElement.align;
-      const x = titleElement.align === 'left' ? 50 : titleElement.align === 'right' ? 490 : 270;
-      ctx.fillText(customization.wedding_title || 'Wedding Title', x, y + titleElement.yOffset);
-      y += titleElement.size + 20 + titleElement.yOffset;
-    }
-    
-    // Guest name
-    const guestNameElement = textElements?.guestName;
-    if (guestNameElement) {
-      ctx.fillStyle = guestNameElement.color;
-      ctx.font = `${guestNameElement.size}px "${guestNameElement.font}", serif`;
-      ctx.textAlign = guestNameElement.align;
-      const x = guestNameElement.align === 'left' ? 50 : guestNameElement.align === 'right' ? 490 : 270;
-      ctx.fillText('Dear Guest Name,', x, y + guestNameElement.yOffset);
-      y += guestNameElement.size + 20 + guestNameElement.yOffset;
-    }
-    
-    // Custom message
-    const messageElement = textElements?.message;
-    if (messageElement) {
-      ctx.fillStyle = messageElement.color;
-      ctx.font = `${messageElement.size}px "${messageElement.font}", serif`;
-      ctx.textAlign = messageElement.align;
-      const x = messageElement.align === 'left' ? 50 : messageElement.align === 'right' ? 490 : 270;
-      const message = customization.custom_message || 'Join us for our special day';
-      const messageLines = message.split('\n');
-      messageLines.forEach(line => {
-        ctx.fillText(line, x, y + messageElement.yOffset);
-        y += messageElement.size + 10;
-      });
-      y += 20 + messageElement.yOffset;
-    }
-    
-    // Details
-    const detailsElement = textElements?.details;
-    if (detailsElement) {
-      ctx.fillStyle = detailsElement.color;
-      ctx.font = `${detailsElement.size}px "${detailsElement.font}", sans-serif`;
-      ctx.textAlign = detailsElement.align;
-      const x = detailsElement.align === 'left' ? 50 : detailsElement.align === 'right' ? 490 : 270;
-      const details = [
-        `Date: ${customization.ceremony_date || 'TBA'}`,
-        `Time: ${customization.ceremony_time || 'TBA'}`,
-        `Venue: ${customization.venue_name || 'TBA'}`,
-      ];
-      
-      details.forEach(detail => {
-        ctx.fillText(detail, x, y + detailsElement.yOffset);
-        y += detailsElement.size + 10;
-      });
-    }
-    
-    // QR Code placeholder
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#FFFFFF';
-    const qrSize = 80;
-    let qrX = 270 - qrSize / 2;
-    const qrY = 960 - qrSize - 20;
-    
-    if (customization.qr_position === 'bottom-left') {
-      qrX = 20;
-    } else if (customization.qr_position === 'bottom-right') {
-      qrX = 540 - qrSize - 20;
-    }
-    
-    ctx.fillRect(qrX, qrY, qrSize, qrSize);
-    ctx.fillStyle = textElements?.details?.color || '#FFFFFF';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('QR Code', qrX + qrSize / 2, qrY + qrSize / 2);
-    
-  }, [
-    customization,
-    textElements,
-    backgroundImage,
-    isOpen,
-    fontsLoaded
-  ]);
-
-  const handleChange = (field: keyof InvitationCustomization, value: string | number) => {
-    setCustomization(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleTextElementChange = (elementId: string, field: keyof TextElement, value: string | number) => {
-    setTextElements(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        [elementId]: {
-          ...prev[elementId as keyof typeof prev],
-          [field]: value
-        }
-      };
-    });
+  const handleUpdateImageSettings = (newSettings: any) => {
+    handleInputChange('imageSettings', newSettings);
   };
 
-  const handleSave = async () => {
-    if (!customization.wedding_title.trim()) {
-      setError('Wedding title is required');
-      return;
-    }
-    if (!customization.ceremony_date.trim()) {
-      setError('Ceremony date is required');
-      return;
-    }
-    if (!customization.ceremony_time.trim()) {
-      setError('Ceremony time is required');
-      return;
-    }
-    if (!customization.venue_name.trim()) {
-      setError('Venue name is required');
-      return;
-    }
-    if (!customization.venue_address.trim()) {
-      setError('Venue address is required');
-      return;
-    }
-
+  const handleSaveDesign = async () => {
     try {
-      setSaving(true);
-      setError(null);
-      
-      const extendedCustomization: ExtendedCustomization = {
-        ...customization,
-        textElements
+      setIsSaving(true);
+      setSaveError(null);
+
+      // Prepare customization data for the API
+      const customization = {
+        wedding_title: `${formData.bride} & ${formData.groom}`,
+        ceremony_date: formData.ceremony_date,
+        ceremony_time: formData.ceremony_time,
+        venue_name: formData.venue_name,
+        venue_address: formData.venue_address,
+        custom_message: formData.custom_message || '',
+        text_color: '#000000',
+        font_size: 'medium' as const,
+        text_position: 'center' as const,
+        qr_position: 'bottom-center' as const,
       };
+
+      // Save template selection and customization
+      await weddingApi.updateWeddingTemplate(weddingId, templateId, customization);
       
-      console.log('Saving customization:', {
-        template_id: templateId,
-        customization: extendedCustomization
-      });
+      // Save image settings if image exists
+      if (formData.imageSettings && formData.imageUrl) {
+        await weddingApi.updateImageSettings(weddingId, formData.imageSettings);
+      }
+
+      // Call the onSave callback if provided
+      if (onSave) {
+        onSave(formData);
+      }
+
+      // Show success message
+      alert('Design saved successfully!');
       
-      const response = await invitationApi.updateWeddingSettings(weddingId, {
-        template_id: templateId,
-        customization: extendedCustomization
-      });
+    } catch (error: any) {
+      console.error('Error saving design:', error);
       
-      console.log('Save response:', response);
-      
-      alert('Template customization saved successfully!');
-      onSave();
-      onClose();
-    } catch (err: any) {
-      console.error('Failed to save customization:', err);
-      
-      // Extract detailed error message
-      let errorMessage = 'Failed to save customization. Please try again.';
-      
-      if (err.details && Array.isArray(err.details)) {
-        errorMessage = `Validation errors:\n${err.details.join('\n')}`;
-      } else if (err.message) {
-        errorMessage = err.message;
+      // Provide more detailed error message
+      let errorMessage = 'Failed to save design. Please try again.';
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
       }
       
-      setError(errorMessage);
+      setSaveError(errorMessage);
     } finally {
-      setSaving(false);
+      setIsSaving(false);
     }
   };
+
+  const handleDownloadImage = async () => {
+    try {
+      setIsDownloading(true);
+      
+      if (!invitationRef.current) {
+        throw new Error('Invitation preview not found');
+      }
+
+      // Store original image settings to restore later
+      const originalImageSettings = formData.imageSettings || { x: 0, y: 0, scale: 1 };
+      
+      // Reset image transformations for download (center and fit the image properly)
+      if (formData.imageUrl && activeTemplate?.isPhotoTemplate) {
+        setFormData(prev => ({
+          ...prev,
+          imageSettings: { x: 0, y: 0, scale: 1 }
+        }));
+        
+        // Wait for React to update the DOM
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Hide all elements with class 'hide-on-download' before capturing
+      const elementsToHide = invitationRef.current.querySelectorAll('.hide-on-download');
+      elementsToHide.forEach((el) => {
+        (el as HTMLElement).style.display = 'none';
+      });
+
+      // Get the original dimensions
+      const originalWidth = invitationRef.current.offsetWidth;
+      const originalHeight = invitationRef.current.offsetHeight;
+
+      // Capture the invitation as canvas with high quality
+      const canvas = await html2canvas(invitationRef.current, {
+        useCORS: true,
+        allowTaint: true,
+        width: originalWidth,
+        height: originalHeight,
+        logging: false,
+      });
+
+      // Show hidden elements again
+      elementsToHide.forEach((el) => {
+        (el as HTMLElement).style.display = '';
+      });
+
+      // Restore original image settings
+      if (formData.imageUrl && activeTemplate?.isPhotoTemplate) {
+        setFormData(prev => ({
+          ...prev,
+          imageSettings: originalImageSettings
+        }));
+      }
+
+      // Create a higher resolution canvas
+      const highResCanvas = document.createElement('canvas');
+      const scale = 3; // 3x resolution for better quality
+      highResCanvas.width = originalWidth * scale;
+      highResCanvas.height = originalHeight * scale;
+      
+      const ctx = highResCanvas.getContext('2d');
+      if (ctx) {
+        // Enable image smoothing for better quality
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // Draw the original canvas scaled up
+        ctx.drawImage(canvas, 0, 0, originalWidth * scale, originalHeight * scale);
+      }
+
+      // Convert to blob and download with high quality
+      highResCanvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          const fileName = `wedding-invitation-${formData.bride?.replace(/\s+/g, '-') || 'bride'}-${formData.groom?.replace(/\s+/g, '-') || 'groom'}.png`;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+      }, 'image/png', 1.0); // 1.0 = maximum quality
+
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      alert('Failed to download image. Please try again.');
+      
+      // Make sure to show hidden elements even if there's an error
+      if (invitationRef.current) {
+        const elementsToHide = invitationRef.current.querySelectorAll('.hide-on-download');
+        elementsToHide.forEach((el) => {
+          (el as HTMLElement).style.display = '';
+        });
+      }
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const nextStep = () => { if (currentStep < totalSteps) setCurrentStep(curr => curr + 1); };
+  const prevStep = () => { if (currentStep > 1) setCurrentStep(curr => curr - 1); };
 
   if (!isOpen) return null;
 
-  const activeElement = textElements?.[activeSection as keyof typeof textElements];
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 overflow-y-auto p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-2xl font-semibold text-gray-900">Customize Invitation</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
+    <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 overflow-hidden">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-50 shadow-sm h-16 shrink-0">
+        <div className="flex items-center gap-2">
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+          <span className="font-bold text-gray-700">Customizing: {activeTemplate?.name}</span>
         </div>
+        <div className="flex gap-3">
+             <button className="text-xs font-bold text-gray-500 uppercase tracking-wider px-4 py-2 hover:bg-gray-100 rounded-full transition-colors" onClick={onClose}>Cancel</button>
+             <button onClick={() => onSave && onSave(formData)} className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-full text-xs font-bold tracking-wider shadow-lg hover:shadow-xl transition-all">Save Design</button>
+        </div>
+      </header>
 
-        {/* Content - Split view */}
-        <div className="flex-1 overflow-hidden flex">
-          {/* Left: Preview */}
-          <div className="w-1/2 p-6 bg-gray-50 border-r overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Live Preview</h3>
-            {!backgroundImage ? (
-              <div className="bg-white rounded-lg shadow-lg p-4 flex items-center justify-center" style={{ width: 540, height: 960 }}>
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading template...</p>
-                </div>
+      <main className="flex-1 flex overflow-hidden">
+        {/* LEFT PANEL: Wizard Form */}
+        <aside className="w-full max-w-[480px] bg-white border-r border-gray-200 flex flex-col z-20 shadow-2xl">
+          {/* Step Indicator */}
+          <div className="px-8 pt-8 pb-6">
+            <div className="flex items-center justify-between relative">
+              <div className="absolute top-1/2 left-0 right-0 h-[2px] bg-gray-100 -z-0 -translate-y-1/2">
+                <div className="h-full bg-rose-600 transition-all duration-500" style={{ width: `${((currentStep - 1) / (totalSteps - 1)) * 100}%` }} />
               </div>
-            ) : (
-              <div className="bg-white rounded-lg shadow-lg p-4 inline-block">
-                <canvas
-                  ref={canvasRef}
-                  className="border border-gray-200 rounded"
-                  style={{ maxWidth: '100%', height: 'auto' }}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Right: Controls */}
-          <div className="w-1/2 p-6 overflow-y-auto">
-            {error && (
-              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-6">
-              {/* Wedding Details */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Type className="w-5 h-5" />
-                  Wedding Details
-                </h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Wedding Title *
-                    </label>
-                    <input
-                      type="text"
-                      value={customization.wedding_title}
-                      onChange={(e) => handleChange('wedding_title', e.target.value)}
-                      placeholder="e.g., Sarah & John"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Ceremony Date *
-                      </label>
-                      <input
-                        type="text"
-                        value={customization.ceremony_date}
-                        onChange={(e) => handleChange('ceremony_date', e.target.value)}
-                        placeholder="e.g., June 15, 2024"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Ceremony Time *
-                      </label>
-                      <input
-                        type="text"
-                        value={customization.ceremony_time}
-                        onChange={(e) => handleChange('ceremony_time', e.target.value)}
-                        placeholder="e.g., 4:00 PM"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                      />
+              {[...Array(totalSteps)].map((_, i) => {
+                const stepNum = i + 1;
+                const isActive = stepNum === currentStep;
+                const isCompleted = stepNum < currentStep;
+                return (
+                  <div key={stepNum} className="flex flex-col items-center relative z-10 bg-white px-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all border-2 ${isActive ? 'bg-rose-600 text-white border-rose-600' : isCompleted ? 'bg-green-500 text-white border-green-500' : 'bg-white text-gray-400 border-gray-200'}`}>
+                      {isCompleted ? <Check className="w-4 h-4" /> : stepNum}
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Venue Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={customization.venue_name}
-                      onChange={(e) => handleChange('venue_name', e.target.value)}
-                      placeholder="e.g., Grand Hotel"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Venue Address *
-                    </label>
-                    <textarea
-                      value={customization.venue_address}
-                      onChange={(e) => handleChange('venue_address', e.target.value)}
-                      placeholder="e.g., 123 Main St, City"
-                      rows={2}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Custom Message
-                    </label>
-                    <textarea
-                      value={customization.custom_message}
-                      onChange={(e) => handleChange('custom_message', e.target.value)}
-                      placeholder="e.g., Join us for our special day"
-                      rows={3}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section Tabs */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Palette className="w-5 h-5" />
-                  Per-Section Styling
-                </h3>
-                
-                <div className="flex gap-2 mb-4">
-                  {['title', 'guestName', 'message', 'details'].map((section) => (
-                    <button
-                      key={section}
-                      onClick={() => setActiveSection(section)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        activeSection === section
-                          ? 'bg-rose-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {textElements?.[section as keyof typeof textElements]?.label}
-                    </button>
-                  ))}
-                </div>
-
-                {activeElement && (
-                  <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
-                    {/* Font Family */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Font Family
-                      </label>
-                      <select
-                        value={activeElement.font}
-                        onChange={(e) => handleTextElementChange(activeSection, 'font', e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                      >
-                        {DECORATIVE_FONTS.map((font) => (
-                          <option key={font.value} value={font.value}>
-                            {font.label} ({font.category})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Color */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Text Color
-                      </label>
-                      <div className="flex gap-2 flex-wrap">
-                        {colorOptions.map((color) => (
-                          <button
-                            key={color.value}
-                            onClick={() => handleTextElementChange(activeSection, 'color', color.value)}
-                            className={`w-10 h-10 rounded-lg border-2 transition-all ${
-                              activeElement.color === color.value
-                                ? 'border-rose-600 scale-110'
-                                : 'border-gray-300 hover:border-gray-400'
-                            }`}
-                            style={{ backgroundColor: color.value }}
-                            title={color.label}
-                          />
-                        ))}
-                        <input
-                          type="color"
-                          value={activeElement.color}
-                          onChange={(e) => handleTextElementChange(activeSection, 'color', e.target.value)}
-                          className="w-10 h-10 rounded-lg border-2 border-gray-300 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Size */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Font Size: {activeElement.size}px
-                      </label>
-                      <input
-                        type="range"
-                        min="12"
-                        max="48"
-                        value={activeElement.size}
-                        onChange={(e) => handleTextElementChange(activeSection, 'size', parseInt(e.target.value))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rose-600"
-                      />
-                    </div>
-
-                    {/* Alignment */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Text Alignment
-                      </label>
-                      <div className="flex gap-2">
-                        {[
-                          { value: 'left', icon: AlignLeft, label: 'Left' },
-                          { value: 'center', icon: AlignCenter, label: 'Center' },
-                          { value: 'right', icon: AlignRight, label: 'Right' }
-                        ].map(({ value, icon: Icon, label }) => (
-                          <button
-                            key={value}
-                            onClick={() => handleTextElementChange(activeSection, 'align', value)}
-                            className={`flex-1 px-4 py-2 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                              activeElement.align === value
-                                ? 'border-rose-600 bg-rose-50 text-rose-700'
-                                : 'border-gray-300 hover:border-gray-400'
-                            }`}
-                          >
-                            <Icon className="w-4 h-4" />
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Vertical Offset */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Vertical Spacing: {activeElement.yOffset}px
-                      </label>
-                      <input
-                        type="range"
-                        min="-50"
-                        max="50"
-                        value={activeElement.yOffset}
-                        onChange={(e) => handleTextElementChange(activeSection, 'yOffset', parseInt(e.target.value))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rose-600"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>Up</span>
-                        <span>Default</span>
-                        <span>Down</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Global Settings */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Global Settings</h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Overall Vertical Position: {customization.text_y_position || 40}%
-                    </label>
-                    <input
-                      type="range"
-                      min="10"
-                      max="70"
-                      value={customization.text_y_position || 40}
-                      onChange={(e) => handleChange('text_y_position', parseInt(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rose-600"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>Top</span>
-                      <span>Center</span>
-                      <span>Bottom</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      QR Code Position
-                    </label>
-                    <div className="flex gap-3">
-                      {[
-                        { value: 'bottom-left', label: 'Bottom Left' },
-                        { value: 'bottom-center', label: 'Bottom Center' },
-                        { value: 'bottom-right', label: 'Bottom Right' }
-                      ].map((position) => (
-                        <button
-                          key={position.value}
-                          onClick={() => handleChange('qr_position', position.value)}
-                          className={`px-4 py-2 rounded-lg border-2 transition-all text-sm ${
-                            customization.qr_position === position.value
-                              ? 'border-rose-600 bg-rose-50 text-rose-700'
-                              : 'border-gray-300 hover:border-gray-400'
-                          }`}
-                        >
-                          {position.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
+            </div>
+            <div className="text-center mt-4 font-bold text-rose-600 uppercase text-xs tracking-widest">
+              {currentStep === 1 ? 'Design' : currentStep === 2 ? 'The Couple' : currentStep === 3 ? 'Details' : currentStep === 4 ? 'Photo' : 'Review'}
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save Customization'}
-          </button>
-        </div>
-      </div>
+          <div className="flex-1 px-8 overflow-y-auto">
+            {currentStep === 2 && (
+              <div className="animate-fadeIn">
+                <h3 className="text-2xl font-bold text-gray-900 mb-6 font-serif">The Happy Couple</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Bride / Partner 1</label>
+                    <input type="text" value={formData.bride || formData.partner_1 || ''} onChange={(e) => handleInputChange('bride', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Groom / Partner 2</label>
+                    <input type="text" value={formData.groom || formData.partner_2 || ''} onChange={(e) => handleInputChange('groom', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500" />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {currentStep === 3 && (
+              <div className="animate-fadeIn">
+                <h3 className="text-2xl font-bold text-gray-900 mb-6 font-serif">Event Details</h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Date</label>
+                      <input type="date" value={formData.ceremony_date} onChange={(e) => handleInputChange('ceremony_date', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl" />
+                    </div>
+                    <div>
+                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Time</label>
+                       <input type="text" value={formData.ceremony_time} onChange={(e) => handleInputChange('ceremony_time', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Venue Name</label>
+                    <input type="text" value={formData.venue_name} onChange={(e) => handleInputChange('venue_name', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Address</label>
+                    <input type="text" value={formData.venue_address} onChange={(e) => handleInputChange('venue_address', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl" />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Message / Subheader</label>
+                     <textarea value={formData.custom_message || ''} onChange={(e) => handleInputChange('custom_message', e.target.value)} rows={3} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl" />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Guest Name (Optional)</label>
+                     <input type="text" value={formData.guest_name || ''} onChange={(e) => handleInputChange('guest_name', e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl" placeholder="Leave blank for generic" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 4 && (
+              <div className="animate-fadeIn">
+                 <h3 className="text-2xl font-bold text-gray-900 mb-6 font-serif">Add a Photo</h3>
+                 <div className="border-2 border-dashed border-gray-300 rounded-2xl p-10 flex flex-col items-center justify-center bg-gray-50 hover:bg-rose-50 hover:border-rose-300 transition-all text-center group cursor-pointer relative">
+                   <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={handleImageUpload} />
+                   {formData.imageUrl ? (
+                     <div className="relative w-full">
+                        <img src={formData.imageUrl} alt="Preview" className="w-40 h-40 object-cover rounded-xl mx-auto shadow-lg mb-4" />
+                        <span className="text-rose-600 text-sm font-bold bg-white px-3 py-1 rounded-full shadow-sm">Click to Change</span>
+                     </div>
+                   ) : (
+                     <>
+                        <div className="w-16 h-16 bg-white text-rose-600 rounded-full flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform"><ImageIcon className="w-8 h-8" /></div>
+                        <span className="text-gray-900 font-bold text-lg">Click to upload</span>
+                        <span className="text-xs text-gray-400 mt-2">JPG, PNG up to 5MB</span>
+                     </>
+                   )}
+                </div>
+                {activeTemplate?.isPhotoTemplate && (
+                   <p className="text-xs text-rose-600 mt-4 text-center font-medium bg-rose-50 py-2 rounded-lg">
+                    <Move className="w-3 h-3 inline-block mr-1" /> You can drag and resize your photo in the preview!
+                  </p>
+                )}
+              </div>
+            )}
+
+            {currentStep === 5 && (
+              <div className="animate-fadeIn text-center py-10">
+                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm"><Check className="w-12 h-12" /></div>
+                <h3 className="text-3xl font-bold text-gray-900 mb-3 font-serif">Almost There!</h3>
+                <p className="text-gray-500 mb-10">Your invitation is ready. Save your design or download it as an image.</p>
+                
+                {saveError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                    {saveError}
+                  </div>
+                )}
+                
+                <div className="space-y-4">
+                  <button 
+                    onClick={handleSaveDesign}
+                    disabled={isSaving}
+                    className="w-full py-4 bg-rose-600 text-white rounded-xl font-bold shadow-lg hover:bg-rose-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-colors"
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" /> Save Design to Database
+                      </>
+                    )}
+                  </button>
+                  
+                  <button 
+                    onClick={handleDownloadImage}
+                    disabled={isDownloading}
+                    className="w-full py-4 bg-white border-2 border-rose-600 text-rose-600 rounded-xl font-bold hover:bg-rose-50 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-colors"
+                  >
+                    {isDownloading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-rose-600"></div>
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-5 h-5" /> Download as Image
+                      </>
+                    )}
+                  </button>
+                  
+                  <button 
+                    className="w-full py-4 bg-white border-2 border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-50 flex items-center justify-center gap-3 transition-colors"
+                    onClick={onClose}
+                  >
+                    <CalendarCheck className="w-5 h-5" /> Close
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {currentStep === 1 && (
+               <div className="animate-fadeIn text-center py-10">
+                  <p className="text-gray-500">You are editing {activeTemplate?.name}. Click Next to start customizing.</p>
+               </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t border-gray-100 bg-white flex justify-between items-center">
+             <button onClick={prevStep} disabled={currentStep === 1} className={`flex items-center gap-2 text-sm font-bold px-6 py-3 rounded-full transition-colors ${currentStep === 1 ? 'text-gray-300' : 'text-gray-600 hover:bg-gray-100'}`}><ChevronLeft className="w-4 h-4" /> Back</button>
+             {currentStep < totalSteps && (
+               <button onClick={nextStep} className="flex items-center gap-2 bg-rose-600 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg hover:bg-rose-700 transition-all">Next Step <ChevronRight className="w-4 h-4" /></button>
+             )}
+          </div>
+        </aside>
+
+        {/* RIGHT PANEL: Live Preview */}
+        <section className="flex-1 bg-gray-100/50 relative flex items-center justify-center p-8 overflow-y-auto">
+          <div className="flex flex-col items-center justify-center w-full h-full">
+            <div 
+               ref={invitationRef}
+               data-invitation-preview
+               className="relative w-full max-w-[400px] bg-white shadow-2xl shadow-slate-400/20 rounded-sm overflow-hidden" 
+               style={{ aspectRatio: activeTemplate?.aspectRatio || '5/7', containerType: 'size' }}
+            >
+              <InvitationEngine 
+                templateId={templateId} 
+                data={formData} 
+                onUpdateImageSettings={activeTemplate?.isPhotoTemplate ? handleUpdateImageSettings : undefined}
+              />
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 };

@@ -38,11 +38,6 @@ export function createLazyRoute<P extends object>(
 ) {
   const LazyComponent = React.lazy(importFn);
   
-  // Preload function for hover/focus events
-  const preload = () => {
-    importFn();
-  };
-  
   const WrappedComponent = React.forwardRef<any, P>((props, ref) => {
     const FallbackComponent = fallback;
     return (
@@ -51,9 +46,6 @@ export function createLazyRoute<P extends object>(
       </Suspense>
     );
   });
-  
-  // Attach preload function to component
-  (WrappedComponent as any).preload = preload;
   
   return WrappedComponent;
 }

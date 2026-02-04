@@ -232,8 +232,7 @@ const VendorDirectory: React.FC = () => {
   };
 
   const handleContactSuccess = () => {
-    // Could show a success message or redirect to dashboard
-    console.log('Contact message sent successfully');
+    // Contact message sent successfully
   };
 
   const getResultsText = () => {

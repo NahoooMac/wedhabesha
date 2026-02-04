@@ -20,21 +20,49 @@ import {
   Instagram, 
   Linkedin,
   ShieldCheck,
-  HelpCircle
+  HelpCircle,
+    Map, 
+  Home, 
+  Briefcase, 
+  FileText, 
+  Shield, 
+  Scale, 
+  Compass,
+  GitBranch,
+  Circle,
+  Database,
+  Layout as LayoutIcon,
+  Server,  
+  Store, 
+  Calculator, 
+  CheckCircle, 
+  MapPin,
+  PlayCircle,
+  Camera,
+  Utensils,
+  Music,
+  Flower2,
+  Car,
+  Palette,
+  Calendar,
+  CheckSquare,
+  Search,
+  Clock,
+  Quote,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-
+import { MemoryRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 // --- MOCK AUTH HOOK ---
-const useAuth = () => {
-  const [user, setUser] = useState<{email: string, user_type: string} | null>(null);
+// const useAuth = () => {
+//   const [user, setUser] = useState<{email: string, user_type: string} | null>(null);
   
-  const logout = async () => {
-    setUser(null);
-    console.log("Logged out");
-  };
+//   const logout = async () => {
+//     setUser(null);
+//     console.log("Logged out");
+//   };
 
-  return { user, logout };
-};
+//   return { user, logout };
+// };
 
 // --- CUSTOM FONT STYLES ---
 const FontStyles = () => (
@@ -93,6 +121,144 @@ const FontStyles = () => (
   `}</style>
 );
 
+// --- TRANSLATIONS ---
+const translations = {
+  en: {
+    nav: {
+      vendors: "Vendors",
+      tools: "Planning Tools",
+      pricing: "Pricing",
+      login: "Log In",
+      getStarted: "Get Started",
+      signout: "Sign Out",
+      realWeddings: "Real Weddings"
+    },
+    hero: {
+      badge: "Beta Version - 100% Free Access",
+      title: "Choose Your Perfect ",
+      titleHighlight: "Wedding Plan",
+      subtitle: "From intimate gatherings to grand multi-day celebrations, discover the plan that fits your dream. All premium features are free during our beta period."
+    },
+    packages: {
+      starter: {
+        name: "Starter",
+        subtitle: "Perfect for simple weddings",
+        desc: "Get started with essential wedding planning tools",
+        cta: "Start Free"
+      },
+      pro: {
+        name: "Pro",
+        subtitle: "Most popular choice",
+        desc: "Everything you need for a stress-free wedding",
+        cta: "Plan My Wedding",
+        badge: "Most Popular"
+      },
+      elite: {
+        name: "Elite",
+        subtitle: "Premium wedding experience",
+        desc: "For large, luxury, or multi-day celebrations",
+        cta: "Go Elite",
+        badge: "Premium"
+      },
+      freeDuringBeta: "Free during beta"
+    },
+    comparison: {
+      title: "Compare Features",
+      subtitle: "Detailed breakdown of what's included in each plan.",
+      headers: { feature: "Features", starter: "Starter", pro: "Pro", elite: "Elite" }
+    },
+    faq: {
+      title: "Common Questions",
+      items: [
+        { q: "Is everything really free during beta?", a: "Yes! All features across all packages are completely free during our beta period. This includes unlimited guests, QR check-in, analytics, and premium support." },
+        { q: "How long is the beta period?", a: "The beta period will continue throughout 2025. We'll give all beta users advance notice before any pricing changes, and early adopters will receive special discounts." },
+        { q: "Can I switch packages later?", a: "Absolutely! You can upgrade or change your package at any time. During beta, all features are available regardless of your selected package." },
+        { q: "What happens to my data?", a: "Your wedding data is safe and will remain accessible. We'll never delete your information, and you'll have full export capabilities." }
+      ]
+    },
+    cta: {
+      title: "Start Your Journey Today",
+      subtitle: "Join thousands of Ethiopian couples planning their perfect day with WedHabesha. No credit card required.",
+      btnPrimary: "Start Planning Free",
+      btnSecondary: "Browse Vendors"
+    },
+    footer: {
+      company: "Company",
+      tools: "Planning Tools",
+      vendorsList: "Vendors",
+      rights: "All rights reserved.",
+      tagline: "The #1 wedding planning platform for Ethiopian couples worldwide. We make your special day effortless."
+    }
+  },
+  am: {
+    nav: {
+      vendors: "አቅራቢዎች",
+      tools: "የእቅድ መሳርያዎች",
+      pricing: "ዋጋ",
+      login: "ይግቡ",
+      getStarted: "ይጀምሩ",
+      signout: "ውጣ",
+      realWeddings: "እውነተኛ ሰርጎች"
+    },
+    hero: {
+      badge: "ቤታ ስሪት - 100% ነፃ መዳረሻ",
+      title: "ለእርስዎ ትክክለኛውን ",
+      titleHighlight: "የሰርግ ዕቅድ ይምረጡ",
+      subtitle: "ከቀላል ስብሰባዎች እስከ ትልልቅ ባለብዙ ቀን ክብረ በዓላት፣ ለህልምዎ የሚስማማውን እቅድ ያግኙ። በቤታ ጊዜያችን ሁሉም የፕሪሚየም ባህሪያት ነፃ ናቸው።"
+    },
+    packages: {
+      starter: {
+        name: "ጀማሪ",
+        subtitle: "ለቀላል ሰርጎች ተስማሚ",
+        desc: "በመሰረታዊ የሰርግ እቅድ መሳሪያዎች ይጀምሩ",
+        cta: "በነጻ ይጀምሩ"
+      },
+      pro: {
+        name: "ፕሮ",
+        subtitle: "በጣም ታዋቂ ምርጫ",
+        desc: "ከጭንቀት ነጻ ለሆነ ሰርግ የሚያስፈልግዎ ሁሉ",
+        cta: "ሰርጌን አቅድ",
+        badge: "በጣም ታዋቂ"
+      },
+      elite: {
+        name: "ኤሊት",
+        subtitle: "ፕሪሚየም የሰርግ ተሞክሮ",
+        desc: "ለትላልቅ፣ የቅንጦት ወይም ባለብዙ ቀን ክብረ በዓላት",
+        cta: "ወደ ኤሊት ሂድ",
+        badge: "ፕሪሚየም"
+      },
+      freeDuringBeta: "በቤታ ጊዜ ነፃ"
+    },
+    comparison: {
+      title: "ባህሪያትን ያወዳድሩ",
+      subtitle: "በእያንዳንዱ ጥቅል ውስጥ የተካተተውን ዝርዝር መግለጫ።",
+      headers: { feature: "ባህሪያት", starter: "ጀማሪ", pro: "ፕሮ", elite: "ኤሊት" }
+    },
+    faq: {
+      title: "የተለመዱ ጥያቄዎች",
+      items: [
+        { q: "በቤታ ጊዜ ሁሉም ነገር በእርግጥ ነፃ ነው?", a: "አዎ! በሁሉም ጥቅሎች ውስጥ ያሉ ሁሉም ባህሪያት በቤታ ጊዜያችን ሙሉ በሙሉ ነፃ ናቸው። ይህ ያልተገደቡ እንግዶችን፣ የQR ፍተሻን፣ ትንታኔዎችን እና የፕሪሚየም ድጋፍን ያካትታል።" },
+        { q: "የቤታ ጊዜው ምን ያህል ይቆያል?", a: "የቤታ ጊዜው በ2025 በሙሉ ይቀጥላል። ማንኛውም የዋጋ ለውጥ ከመደረጉ በፊት ለሁሉም የቤታ ተጠቃሚዎች የቅድሚያ ማስታወቂያ እንሰጣለን፣ እና ቀድመው ለተቀላቀሉት ልዩ ቅናሾች ይኖራቸዋል።" },
+        { q: "ጥቅሎችን በኋላ መቀየር እችላለሁ?", a: "በፍጹም! በማንኛውም ጊዜ ጥቅልዎን ማሻሻል ወይም መቀየር ይችላሉ። በቤታ ጊዜ፣ የመረጡት ጥቅል ምንም ይሁን ምን ሁሉም ባህሪያት ይገኛሉ።" },
+        { q: "የእኔ መረጃ ምን ይሆናል?", a: "የሰርግ መረጃዎ ደህንነቱ የተጠበቀ ነው እና ተደራሽ ሆኖ ይቆያል። መረጃዎን በፍጹም አንሰረዝም፣ እና ሙሉ የመላክ ችሎታ ይኖርዎታል።" }
+      ]
+    },
+    cta: {
+      title: "ጉዞዎን ዛሬ ይጀምሩ",
+      subtitle: "ከWedHabesha ጋር ፍጹም ቀናቸውን እያቀዱ ያሉ በሺዎች የሚቆጠሩ የኢትዮጵያ ጥንዶችን ይቀላቀሉ። ክሬዲት ካርድ አያስፈልግም።",
+      btnPrimary: "በነፃ ማቀድ ይጀምሩ",
+      btnSecondary: "አቅራቢዎችን ያስሱ"
+    },
+    footer: {
+      company: "ድርጅት",
+      tools: "የእቅድ መሳርያዎች",
+      vendorsList: "አቅራቢዎች",
+      rights: "መብቱ በህግ የተጠበቀ ነው።",
+      tagline: "በዓለም ዙሪያ ላሉ ኢትዮጵያውያን ጥንዶች #1 የሰርግ እቅድ መድረክ። ልዩ ቀንዎን ቀላል እናደርጋለን።"
+    }
+  }
+};
+
 // --- SHARED COMPONENTS (Button) ---
 const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost', size?: 'sm' | 'default' | 'lg' }> = ({ 
   className = "", 
@@ -115,18 +281,35 @@ const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant
 };
 
 // --- LAYOUT COMPONENT ---
-const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface LayoutProps {
+    children: React.ReactNode;
+    lang: 'en' | 'am';
+    setLang: (lang: 'en' | 'am') => void;
+}
+
+const Layout: React.FC<LayoutProps> = ({ children, lang, setLang }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { user, logout } = useAuth(); // Mock auth
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const { user, logout } = useAuth();
+  const t = translations[lang];
 
   useEffect(() => {
-    // Check for saved dark mode preference
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     setIsDarkMode(savedDarkMode);
     if (savedDarkMode) {
       document.documentElement.classList.add('dark');
     }
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 50);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const toggleDarkMode = () => {
@@ -141,78 +324,230 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   };
 
+  const toggleLang = () => {
+    setLang(lang === 'en' ? 'am' : 'en');
+  };
+
+  const getDashboardLink = () => {
+    if (!user) return '/login';
+    return user.user_type?.toLowerCase() === 'vendor' ? '/vendor/dashboard' : '/dashboard';
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setIsUserMenuOpen(false);
+      setIsMenuOpen(false);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col font-sans text-gray-900 bg-white dark:bg-gray-950 dark:text-white transition-colors duration-300 selection:bg-rose-100 selection:text-rose-900 overflow-x-hidden">
+    <div className="min-h-screen flex flex-col font-sans text-gray-900 bg-white dark:bg-gray-950 dark:text-white transition-colors duration-300 selection:bg-rose-100 selection:text-rose-900">
       <FontStyles />
       
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800 transition-all duration-300">
-         <div className="container mx-auto px-4 h-20 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2 group cursor-pointer">
-              <div className="w-9 h-9 bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform duration-300">
-                <Heart className="w-5 h-5 text-white fill-current" />
+    {/* Navigation */}
+        <nav className={`fixed w-full z-50 transition-all duration-300 ${scrolled ? 'bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800 shadow-sm' : 'bg-transparent border-transparent'}`}>
+           <div className="container mx-auto px-4 h-20 flex items-center justify-between">
+              {/* Logo */}
+              <Link to="/" className="flex items-center gap-2 group cursor-pointer">
+                <div className="w-9 h-9 bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform duration-300">
+                  <Heart className="w-5 h-5 text-white fill-current" />
+                </div>
+                <span className="font-extrabold text-2xl tracking-tight text-gray-900 dark:text-white font-menbere">
+                  Wed<span className="text-rose-600">Habesha</span>
+                </span>
+              </Link>
+  
+              {/* Desktop Menu */}
+              <div className="hidden md:flex items-center gap-8 font-semibold text-sm">
+                 <Link to="/vendors" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                     {t.nav.vendors}
+                     <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+                 </Link>
+                 
+                 <Link to="/pricing" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                     {t.nav.pricing}
+                     <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+                 </Link>
+                 
+                 {user && (
+                   <Link to={getDashboardLink()} className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                       {t.nav.tools}
+                       <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+                   </Link>
+                 )}
+                 
+                 <a href="#testimonials" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                     {t.nav.realWeddings}
+                     <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+                 </a>
               </div>
-              <span className="font-extrabold text-2xl tracking-tight text-gray-900 dark:text-white font-menbere">
-                Wed<span className="text-rose-600">Habesha</span>
-              </span>
-            </Link>
-
-            <div className="hidden md:flex items-center gap-8 font-semibold text-sm">
-               <Link to="/vendors" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
-                   Vendors
-                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
-               </Link>
-               <Link to="/dashboard" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
-                   Planning Tools
-                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
-               </Link>
-               <Link to="/pricing" className="relative text-rose-600 dark:text-rose-400 font-bold transition-colors group py-2">
-                   Pricing
-                   <span className="absolute bottom-0 left-0 w-full h-0.5 bg-rose-500"></span>
-               </Link>
-            </div>
-
-            <div className="hidden md:flex items-center gap-3">
-              <button 
-                onClick={toggleDarkMode} 
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                aria-label="Toggle dark mode"
-              >
-                {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+  
+              {/* Auth Buttons & Lang Toggle */}
+              <div className="hidden md:flex items-center gap-3">
+                <button 
+                  onClick={toggleLang}
+                  className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 flex items-center gap-2 font-medium"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>{lang === 'en' ? 'አማ' :'EN'  }</span>
+                </button>
+                
+                <button 
+                  onClick={toggleDarkMode}
+                  className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                  aria-label="Toggle dark mode"
+                >
+                  {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+                
+                <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+  
+                {user ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                      className="flex items-center space-x-3 pl-3 pr-2 py-1.5 rounded-full transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white hover:border-rose-200"
+                    >
+                      <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-full flex items-center justify-center shadow-md">
+                        <User className="h-4 w-4 text-white" />
+                      </div>
+                      <div className="text-left hidden xl:block mr-2">
+                        <p className="text-xs font-bold">{user.email?.split('@')[0]}</p>
+                      </div>
+                    </button>
+                    
+                    {isUserMenuOpen && (
+                      <div className="absolute right-0 mt-3 w-60 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl py-2 z-50 border border-gray-100 dark:border-gray-800 animate-in slide-in-from-top-2">
+                        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{user.email}</p>
+                          <p className="text-xs text-gray-500 capitalize">{user.user_type?.toLowerCase()}</p>
+                        </div>
+                        <Link
+                          to={getDashboardLink()}
+                          className="flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <User className="h-4 w-4 mr-3 text-gray-400 group-hover:text-rose-500 transition-colors" />
+                          Dashboard
+                        </Link>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <LogOut className="h-4 w-4 mr-3" />
+                          Sign Out
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <Link to="/login">
+                      <Button variant="ghost" size="sm" className="font-bold hover:text-rose-600">{t.nav.login}</Button>
+                    </Link>
+                    <Link to="/register">
+                      <Button size="sm" className="rounded-full px-6 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 shadow-none border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+                        {t.nav.getStarted}
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </div>
+  
+              {/* Mobile Menu Toggle */}
+              <button className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+                {isMenuOpen ? <X /> : <Menu />}
               </button>
-              <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
-              {user ? (
-                 <Button size="sm" onClick={() => logout()}>Sign Out</Button>
-              ) : (
-                <>
-                  <Link to="/login"><Button variant="ghost" size="sm">Log In</Button></Link>
-                  <Link to="/register"><Button size="sm" className="shadow-rose-500/20">Get Started</Button></Link>
-                </>
-              )}
-            </div>
-            
-            <button className="md:hidden p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-              {isMenuOpen ? <X /> : <Menu />}
-            </button>
-         </div>
-         {isMenuOpen && (
-           <div className="md:hidden bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 p-4 flex flex-col gap-4 animate-in slide-in-from-top-2 shadow-xl">
-             <Link to="/vendors" className="font-medium text-gray-700 dark:text-gray-200 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg">Vendors</Link>
-             <Link to="/dashboard" className="font-medium text-gray-700 dark:text-gray-200 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg">Tools</Link>
-             <Link to="/pricing" className="font-bold text-rose-600 p-2 bg-rose-50 dark:bg-rose-900/10 rounded-lg">Pricing</Link>
-             <Link to="/login" className="font-medium text-gray-700 dark:text-gray-200 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg">Log In</Link>
            </div>
-         )}
-      </nav>
+  
+           {/* Mobile Menu Dropdown */}
+           {isMenuOpen && (
+             <div className="md:hidden absolute top-20 left-0 w-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800 p-6 flex flex-col gap-4 shadow-2xl animate-in slide-in-from-top-5">
+                <Link to="/vendors" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+                  {t.nav.vendors} <ChevronRight className="w-5 h-5 text-gray-400"/>
+                </Link>
+                
+                <Link to="/pricing" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+                  {t.nav.pricing} <ChevronRight className="w-5 h-5 text-gray-400"/>
+                </Link>
+                
+                {user && (
+                  <Link to={getDashboardLink()} className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+                    {t.nav.tools} <ChevronRight className="w-5 h-5 text-gray-400"/>
+                  </Link>
+                )}
+                
+                <div className="py-2 px-4 flex justify-between items-center">
+                   <span className="text-gray-600 dark:text-gray-300">Language / ቋንቋ</span>
+                   <button 
+                      onClick={toggleLang}
+                      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center gap-2 font-bold"
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span>{lang === 'en' ? 'English' : 'አማርኛ'}</span>
+                    </button>
+                </div>
+                <div className="py-2 px-4 flex justify-between items-center">
+                   <span className="text-gray-600 dark:text-gray-300">Theme / ገጽታ</span>
+                   <button 
+                      onClick={toggleDarkMode}
+                      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center gap-2 font-bold"
+                      aria-label="Toggle dark mode"
+                    >
+                      {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                      <span>{isDarkMode ? (lang === 'en' ? 'Light' : 'ብሩህ') : (lang === 'en' ? 'Dark' : 'ጨለማ')}</span>
+                    </button>
+                </div>
+                <div className="h-px bg-gray-100 dark:bg-gray-800 my-2"></div>
+                
+                {user ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center px-4 py-2">
+                      <div className="w-10 h-10 bg-gradient-to-br from-rose-500 to-rose-600 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <User className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                          {user.email}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                          {user.user_type?.toLowerCase()}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center justify-center px-4 py-3 text-red-600 bg-red-50 dark:bg-red-900/20 rounded-xl font-medium transition-colors"
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <Link to="/login" onClick={() => setIsMenuOpen(false)}>
+                      <Button variant="outline" className="w-full justify-center">{t.nav.login}</Button>
+                    </Link>
+                    <Link to="/register" onClick={() => setIsMenuOpen(false)}>
+                      <Button className="w-full justify-center">{t.nav.getStarted}</Button>
+                    </Link>
+                  </div>
+                )}
+             </div>
+           )}
+        </nav>
 
       <main className="flex-grow">
         {children}
       </main>
 
       {/* Footer */}
-      <footer className="bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 pt-20 pb-10 transition-colors duration-300">
+      <footer className="bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 pt-20 pb-10">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 mb-16">
+          <div className="grid md:grid-cols-4 gap-12 mb-16">
             <div className="space-y-6">
               <Link to="/" className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-rose-600 rounded-lg flex items-center justify-center">
@@ -221,7 +556,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <span className="font-bold text-xl font-menbere">WedHabesha</span>
               </Link>
               <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-sm">
-                The #1 wedding planning platform for Ethiopian couples worldwide. We make your special day effortless.
+                {t.footer.tagline}
               </p>
               <div className="flex gap-4">
                 <a href="#" className="w-10 h-10 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center hover:border-blue-600 hover:text-blue-600 transition-all cursor-pointer shadow-sm group">
@@ -231,37 +566,31 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   <Instagram className="w-5 h-5 text-gray-500 dark:text-gray-400 group-hover:text-pink-600 transition-colors" />
                 </a>
                 <a href="#" className="w-10 h-10 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white transition-all cursor-pointer shadow-sm group">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-gray-500 dark:text-gray-400 group-hover:text-black dark:group-hover:text-white transition-colors">
-                    <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
-                  </svg>
-                </a>
-                <a href="#" className="w-10 h-10 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 flex items-center justify-center hover:border-blue-700 hover:text-blue-700 transition-all cursor-pointer shadow-sm group">
                   <Linkedin className="w-5 h-5 text-gray-500 dark:text-gray-400 group-hover:text-blue-700 transition-colors" />
                 </a>
               </div>
             </div>
             
             <div>
-              <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">Company</h4>
+              <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">{t.footer.company}</h4>
               <ul className="space-y-4 text-gray-600 dark:text-gray-400 text-sm">
                 <li><Link to="/about" className="hover:text-rose-600 transition-colors">About Us</Link></li>
-                <li><a href="#" className="hover:text-rose-600 transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-rose-600 transition-colors">Press & Media</a></li>
+               <li><Link to="/careers" className="hover:text-rose-600 transition-colors">Careers</Link></li>
+                             <li><Link to="/press" className="hover:text-rose-600 transition-colors">Press & Media</Link></li>
               </ul>
             </div>
             
             <div>
-              <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">Planning Tools</h4>
+              <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">{t.footer.tools}</h4>
               <ul className="space-y-4 text-gray-600 dark:text-gray-400 text-sm">
                 <li><Link to="/dashboard" className="hover:text-rose-600 transition-colors">Wedding Checklist</Link></li>
                 <li><Link to="/dashboard" className="hover:text-rose-600 transition-colors">Guest List Manager</Link></li>
                 <li><Link to="/dashboard" className="hover:text-rose-600 transition-colors">Budget Calculator</Link></li>
-                <li><Link to="/dashboard" className="hover:text-rose-600 transition-colors">Seating Chart</Link></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">Vendors</h4>
+              <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">{t.footer.vendorsList}</h4>
               <ul className="space-y-4 text-gray-600 dark:text-gray-400 text-sm">
                 <li><Link to="/login" className="hover:text-rose-600 transition-colors">Vendor Login</Link></li>
                 <li><Link to="/vendors" className="hover:text-rose-600 transition-colors">List Your Business</Link></li>
@@ -271,11 +600,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
           
           <div className="border-t border-gray-200 dark:border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-            <p>© {new Date().getFullYear()} WedHabesha. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} WedHabesha. {t.footer.rights}</p>
             <div className="flex gap-6">
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white transition-colors">Terms</a>
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white transition-colors">Sitemap</a>
+              <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-white transition-colors">Privacy</Link>
+              <Link to="/terms" className="hover:text-gray-900 dark:hover:text-white transition-colors">Terms</Link>
+             <Link to="/sitemap" className="hover:text-gray-900 dark:hover:text-white">Sitemap</Link>
             </div>
           </div>
         </div>
@@ -284,8 +613,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
-// --- PRICING PAGE COMPONENT ---
+// --- PRICING PAGE CONTENT ---
 const PricingPage: React.FC = () => {
+  const [lang, setLang] = useState<'en' | 'am'>('en');
+  const t = translations[lang];
   const navigate = useNavigate();
 
   const features = [
@@ -312,12 +643,12 @@ const PricingPage: React.FC = () => {
   const packages = [
     {
       id: 'starter',
-      name: 'Starter',
-      subtitle: 'Perfect for simple weddings',
+      name: t.packages.starter.name,
+      subtitle: t.packages.starter.subtitle,
       price: '0',
       badge: null,
-      description: 'Get started with essential wedding planning tools',
-      cta: 'Start Free',
+      description: t.packages.starter.desc,
+      cta: t.packages.starter.cta,
       ctaStyle: 'bg-white border-2 border-gray-200 text-gray-900 hover:border-gray-900 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:hover:border-gray-500',
       popular: false,
       icon: Users,
@@ -334,12 +665,12 @@ const PricingPage: React.FC = () => {
     },
     {
       id: 'pro',
-      name: 'Pro',
-      subtitle: 'Most popular choice',
+      name: t.packages.pro.name,
+      subtitle: t.packages.pro.subtitle,
       price: '0',
-      badge: 'Most Popular',
-      description: 'Everything you need for a stress-free wedding',
-      cta: 'Plan My Wedding',
+      badge: t.packages.pro.badge,
+      description: t.packages.pro.desc,
+      cta: t.packages.pro.cta,
       ctaStyle: 'bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 text-white shadow-lg shadow-rose-500/30 border-transparent',
       popular: true,
       icon: Star,
@@ -360,12 +691,12 @@ const PricingPage: React.FC = () => {
     },
     {
       id: 'elite',
-      name: 'Elite',
-      subtitle: 'Premium wedding experience',
+      name: t.packages.elite.name,
+      subtitle: t.packages.elite.subtitle,
       price: '0',
-      badge: 'Premium',
-      description: 'For large, luxury, or multi-day celebrations',
-      cta: 'Go Elite',
+      badge: t.packages.elite.badge,
+      description: t.packages.elite.desc,
+      cta: t.packages.elite.cta,
       ctaStyle: 'bg-gray-900 hover:bg-gray-800 text-white shadow-lg dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100',
       popular: false,
       icon: Crown,
@@ -390,32 +721,31 @@ const PricingPage: React.FC = () => {
   };
 
   return (
-    <Layout>
+    <Layout lang={lang} setLang={setLang}>
       <div className="bg-white dark:bg-gray-950 min-h-screen pb-16 transition-colors duration-500 overflow-x-hidden">
         
         {/* Subtle Background Pattern */}
         <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-rose-50/50 to-transparent dark:from-rose-900/10 pointer-events-none"></div>
-        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-100/30 dark:bg-purple-900/10 rounded-full blur-[120px] -translate-y-1/2 pointer-events-none overflow-hidden"></div>
+        <div className="absolute top-0 right-0 w-[40vw] h-[40vw] bg-purple-100/30 dark:bg-purple-900/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
 
         {/* Hero Section */}
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28 overflow-x-hidden">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
           <div className="text-center max-w-3xl mx-auto mb-20 animate-in slide-in-from-bottom-4 duration-700">
             <div className="inline-flex items-center gap-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide mb-8 border border-rose-100 dark:border-rose-800">
               <Sparkles className="w-3.5 h-3.5" />
-              Beta Version - 100% Free Access
+              {t.hero.badge}
             </div>
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 dark:text-white mb-8 font-menbere leading-tight">
-              Choose Your Perfect <br className="hidden md:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-600 to-purple-600">Wedding Plan</span>
+              {t.hero.title}<br className="hidden md:block" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-600 to-purple-600">{t.hero.titleHighlight}</span>
             </h1>
             <p className="text-xl text-gray-600 dark:text-gray-300 font-light leading-relaxed">
-              From intimate gatherings to grand multi-day celebrations, discover the plan that fits your dream. 
-              <strong className="text-gray-900 dark:text-white font-medium block mt-2">All premium features are free during our beta period.</strong>
+              {t.hero.subtitle}
             </p>
           </div>
 
           {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 mb-24 relative z-10 max-w-full">
+          <div className="grid md:grid-cols-3 gap-8 mb-24 relative z-10">
             {packages.map((pkg, idx) => {
               const Icon = pkg.icon;
               return (
@@ -468,7 +798,7 @@ const PricingPage: React.FC = () => {
                         <span className="text-xl font-medium text-gray-500 dark:text-gray-400">ETB</span>
                       </div>
                       <p className="text-xs font-bold text-rose-600 dark:text-rose-400 mt-2 uppercase tracking-wide flex items-center gap-1">
-                        <Zap className="w-3 h-3" /> Free during beta
+                        <Zap className="w-3 h-3" /> {t.packages.freeDuringBeta}
                       </p>
                     </div>
 
@@ -499,8 +829,8 @@ const PricingPage: React.FC = () => {
           {/* Comparison Table Section */}
           <div className="max-w-5xl mx-auto mb-24">
             <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4 font-menbere">Compare Features</h2>
-              <p className="text-gray-600 dark:text-gray-400">Detailed breakdown of what's included in each plan.</p>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4 font-menbere">{t.comparison.title}</h2>
+              <p className="text-gray-600 dark:text-gray-400">{t.comparison.subtitle}</p>
             </div>
 
             <div className="bg-white dark:bg-gray-900 rounded-[2rem] shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -508,10 +838,10 @@ const PricingPage: React.FC = () => {
                 <table className="w-full min-w-[600px]">
                   <thead>
                     <tr className="bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
-                      <th className="text-left p-6 pl-8 font-bold text-gray-900 dark:text-white w-1/3">Features</th>
-                      <th className="text-center p-6 font-bold text-gray-600 dark:text-gray-300 w-1/5">Starter</th>
-                      <th className="text-center p-6 font-bold text-rose-600 dark:text-rose-400 w-1/5 bg-rose-50/30 dark:bg-rose-900/10">Pro</th>
-                      <th className="text-center p-6 font-bold text-purple-600 dark:text-purple-400 w-1/5">Elite</th>
+                      <th className="text-left p-6 pl-8 font-bold text-gray-900 dark:text-white w-1/3">{t.comparison.headers.feature}</th>
+                      <th className="text-center p-6 font-bold text-gray-600 dark:text-gray-300 w-1/5">{t.comparison.headers.starter}</th>
+                      <th className="text-center p-6 font-bold text-rose-600 dark:text-rose-400 w-1/5 bg-rose-50/30 dark:bg-rose-900/10">{t.comparison.headers.pro}</th>
+                      <th className="text-center p-6 font-bold text-purple-600 dark:text-purple-400 w-1/5">{t.comparison.headers.elite}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -553,16 +883,11 @@ const PricingPage: React.FC = () => {
               <div className="inline-flex items-center justify-center w-12 h-12 bg-rose-100 dark:bg-rose-900/30 rounded-2xl mb-4 text-rose-600 dark:text-rose-400">
                 <HelpCircle className="w-6 h-6" />
               </div>
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4 font-menbere">Common Questions</h2>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4 font-menbere">{t.faq.title}</h2>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-full">
-              {[
-                { q: "Is everything really free during beta?", a: "Yes! All features across all packages are completely free during our beta period. This includes unlimited guests, QR check-in, analytics, and premium support." },
-                { q: "How long is the beta period?", a: "The beta period will continue throughout 2025. We'll give all beta users advance notice before any pricing changes, and early adopters will receive special discounts." },
-                { q: "Can I switch packages later?", a: "Absolutely! You can upgrade or change your package at any time. During beta, all features are available regardless of your selected package." },
-                { q: "What happens to my data?", a: "Your wedding data is safe and will remain accessible. We'll never delete your information, and you'll have full export capabilities." }
-              ].map((item, idx) => (
+            <div className="grid md:grid-cols-2 gap-6">
+              {t.faq.items.map((item, idx) => (
                 <div key={idx} className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow">
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">{item.q}</h3>
                   <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{item.a}</p>
@@ -572,29 +897,29 @@ const PricingPage: React.FC = () => {
           </div>
 
           {/* Final CTA */}
-          <div className="relative rounded-[3rem] overflow-hidden bg-gray-900 dark:bg-black text-white text-center py-16 md:py-20 px-4 md:px-6 mx-4 md:mx-0">
-            <div className="absolute inset-0 opacity-20 overflow-hidden">
-               <div className="absolute top-0 right-0 w-96 h-96 bg-rose-500 rounded-full blur-[120px] -translate-y-1/2"></div>
-               <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-600 rounded-full blur-[120px] translate-y-1/2"></div>
+          <div className="relative rounded-[3rem] overflow-hidden bg-gray-900 dark:bg-black text-white text-center py-20 px-6">
+            <div className="absolute inset-0 opacity-20">
+               <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-rose-500 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2"></div>
+               <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-purple-600 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/2"></div>
             </div>
             
             <div className="relative z-10 max-w-3xl mx-auto">
-              <h2 className="text-4xl md:text-5xl font-bold mb-6 font-menbere">Start Your Journey Today</h2>
+              <h2 className="text-4xl md:text-5xl font-bold mb-6 font-menbere">{t.cta.title}</h2>
               <p className="text-xl text-gray-300 mb-10 font-light">
-                Join thousands of Ethiopian couples planning their perfect day with WedHabesha. No credit card required.
+                {t.cta.subtitle}
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-full">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button
                   onClick={() => handleGetStarted('pro')}
                   className="bg-white text-gray-900 px-10 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 transition-all shadow-xl hover:scale-105"
                 >
-                  Start Planning Free
+                  {t.cta.btnPrimary}
                 </button>
                 <button
                   onClick={() => navigate('/vendors')}
                   className="bg-transparent border-2 border-white/20 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-white/10 transition-all"
                 >
-                  Browse Vendors
+                  {t.cta.btnSecondary}
                 </button>
               </div>
             </div>
@@ -605,5 +930,6 @@ const PricingPage: React.FC = () => {
     </Layout>
   );
 };
+
 
 export default PricingPage;

@@ -15,16 +15,38 @@ class WebSocketServer {
    * @param {Object} httpServer - HTTP server instance
    */
   initialize(httpServer) {
-    // Initialize Redis for pub/sub and session management
-    this.redis = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: process.env.REDIS_PORT || 6379,
-      password: process.env.REDIS_PASSWORD || undefined,
-      retryStrategy: (times) => {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
+    // Initialize Redis for pub/sub and session management (optional)
+    try {
+      if (process.env.REDIS_HOST || process.env.REDIS_URL) {
+        this.redis = new Redis({
+          host: process.env.REDIS_HOST || 'localhost',
+          port: process.env.REDIS_PORT || 6379,
+          password: process.env.REDIS_PASSWORD || undefined,
+          retryStrategy: (times) => {
+            if (times > 3) {
+              console.log('❌ Redis connection failed, continuing without Redis');
+              return null; // Stop retrying
+            }
+            const delay = Math.min(times * 50, 1000);
+            return delay;
+          }
+        });
+
+        this.redis.on('error', (err) => {
+          console.error('❌ WebSocket Redis Error:', err);
+          this.redis = null; // Disable Redis on error
+        });
+
+        this.redis.on('connect', () => {
+          console.log('✅ WebSocket Redis connected');
+        });
+      } else {
+        console.log('ℹ️ Redis not configured for WebSocket - continuing without Redis');
       }
-    });
+    } catch (error) {
+      console.error('❌ Failed to initialize WebSocket Redis:', error);
+      this.redis = null;
+    }
 
     // Initialize Socket.io with CORS configuration
     this.io = new Server(httpServer, {

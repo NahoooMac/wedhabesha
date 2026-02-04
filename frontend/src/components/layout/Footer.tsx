@@ -68,8 +68,8 @@ const Footer: React.FC = () => {
               <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">Company</h4>
               <ul className="space-y-4 text-gray-600 dark:text-gray-400">
                 <li><Link to="/about" className="hover:text-rose-600 transition-colors">About Us</Link></li>
-                <li><a href="#" className="hover:text-rose-600 transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-rose-600 transition-colors">Press & Media</a></li>
+                <li><Link to="/careers" className="hover:text-rose-600 transition-colors">Careers</Link></li>
+                <li><Link to="/press" className="hover:text-rose-600 transition-colors">Press & Media</Link></li>
               </ul>
             </div>
             
@@ -96,9 +96,9 @@ const Footer: React.FC = () => {
           <div className="border-t border-gray-200 dark:border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-500">
             <p>© {new Date().getFullYear()} WedHabesha. All rights reserved.</p>
             <div className="flex gap-6">
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white">Privacy</a>
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white">Terms</a>
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white">Sitemap</a>
+              <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-white">Privacy</Link>
+              <Link to="/terms" className="hover:text-gray-900 dark:hover:text-white">Terms</Link>
+              <Link to="/sitemap" className="hover:text-gray-900 dark:hover:text-white">Sitemap</Link>
             </div>
           </div>
         </div>

@@ -10,16 +10,8 @@ class OTPService {
     
     // Test phone numbers that use fixed OTP codes
     this.testPhoneNumbers = [
-      '+251911234567',
-      '+251912345678',
-      '+251913456789',
-      '+251914567890',
-      '+251915678901',
-      '+251916789012',
-      '+251917890123',
-      '+251918901234',
-      '+251919012345',
-      '+251910123456'
+      '+251901959439',
+      '+251937105764'
     ];
     
     // Fixed OTP code for test numbers
@@ -72,13 +64,33 @@ class OTPService {
   // Check rate limiting for OTP requests
   async checkRateLimit(identifier, otpType) {
     try {
-      const rateLimitCheck = await query(`
-        SELECT COUNT(*) as count 
-        FROM otp_codes 
-        WHERE (email = $1 OR user_id IN (SELECT id FROM users WHERE phone = $1))
-        AND otp_type = $2 
-        AND created_at > datetime('now', '-${this.RATE_LIMIT_MINUTES} minutes')
-      `, [identifier, otpType]);
+      // For phone numbers, check by user_id since users table doesn't have phone column
+      // For email addresses, check by email
+      let rateLimitCheck;
+      
+      if (identifier.includes('@')) {
+        // Email identifier
+        rateLimitCheck = await query(`
+          SELECT COUNT(*) as count 
+          FROM otp_codes 
+          WHERE email = $1
+          AND otp_type = $2 
+          AND created_at > datetime('now', '-${this.RATE_LIMIT_MINUTES} minutes')
+        `, [identifier, otpType]);
+      } else {
+        // Phone identifier - check by user_id from couples/vendors tables
+        rateLimitCheck = await query(`
+          SELECT COUNT(*) as count 
+          FROM otp_codes 
+          WHERE user_id IN (
+            SELECT user_id FROM couples WHERE phone = $1
+            UNION
+            SELECT user_id FROM vendors WHERE phone = $1
+          )
+          AND otp_type = $2 
+          AND created_at > datetime('now', '-${this.RATE_LIMIT_MINUTES} minutes')
+        `, [identifier, otpType]);
+      }
 
       const recentRequests = parseInt(rateLimitCheck.rows[0].count);
       
@@ -261,55 +273,83 @@ class OTPService {
     }
   }
 
-  // Generate OTP for 2FA setup via SMS
-  async generate2FAOTP(userId, phone, ipAddress = null, userAgent = null) {
+  // Generate and send OTP (unified method for 2FA)
+  async generateAndSendOTP(phone, otpType = '2FA_SETUP', userId = null, ipAddress = null, userAgent = null) {
     try {
-      const otpCode = this.generateOTPCode(phone); // Use test-aware OTP generation
-      const expiresAt = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
-
-      // Get user email for database storage
-      const userResult = await query('SELECT email FROM users WHERE id = $1', [userId]);
-      if (userResult.rows.length === 0) {
+      // Check rate limiting
+      const rateLimit = await this.checkRateLimit(phone, otpType);
+      if (!rateLimit.allowed) {
         return {
           success: false,
-          message: 'User not found.'
+          message: rateLimit.message
         };
       }
 
-      const userEmail = userResult.rows[0].email;
+      const otpCode = this.generateOTPCode(phone); // Use test-aware OTP generation
+      const expiresAt = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+      const otpId = crypto.randomBytes(16).toString('hex'); // Generate unique OTP ID
+
+      // If userId is provided, get user email for database storage
+      let userEmail = null;
+      if (userId) {
+        const userResult = await query('SELECT email FROM users WHERE id = $1', [userId]);
+        if (userResult.rows.length > 0) {
+          userEmail = userResult.rows[0].email;
+        }
+      }
 
       // Store OTP in database
       await query(`
         INSERT INTO otp_codes (user_id, email, otp_code, otp_type, expires_at, ip_address, user_agent)
-        VALUES ($1, $2, $3, '2FA_SETUP', $4, $5, $6)
-      `, [userId, userEmail, otpCode, expiresAt.toISOString(), ipAddress, userAgent]);
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [userId, userEmail || phone, otpCode, otpType, expiresAt.toISOString(), ipAddress, userAgent]);
+
+      // Prepare SMS message based on OTP type
+      let message;
+      switch (otpType) {
+        case '2FA_SETUP':
+          message = `Your WedHabesha 2FA setup code is: ${otpCode}. This code expires in ${this.OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
+          break;
+        case '2FA_LOGIN':
+          message = `Your WedHabesha login verification code is: ${otpCode}. This code expires in ${this.OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
+          break;
+        case 'PASSWORD_RESET':
+          message = `Your WedHabesha password reset code is: ${otpCode}. This code expires in ${this.OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
+          break;
+        default:
+          message = `Your WedHabesha verification code is: ${otpCode}. This code expires in ${this.OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
+      }
 
       // Send OTP via SMS
-      const message = `Your WedHabesha 2FA setup code is: ${otpCode}. This code expires in ${this.OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
-      
-      // Import SMS service here to avoid circular dependency
       const smsService = require('./smsService');
       const smsResult = await smsService.sendSMS(phone, message);
       
       if (!smsResult.success) {
+        console.error('Failed to send OTP SMS:', smsResult.error);
         return {
           success: false,
-          message: 'Failed to send 2FA setup SMS. Please try again.'
+          message: 'Failed to send verification code. Please try again.'
         };
       }
 
       return {
         success: true,
-        message: '2FA setup code sent to your phone number.'
+        message: 'Verification code sent to your phone number.',
+        otpId: otpId
       };
 
     } catch (error) {
-      console.error('Generate 2FA OTP error:', error);
+      console.error('Generate and send OTP error:', error);
       return {
         success: false,
-        message: 'Failed to generate 2FA setup code. Please try again.'
+        message: 'Failed to generate verification code. Please try again.'
       };
     }
+  }
+
+  // Generate OTP for 2FA setup via SMS
+  async generate2FAOTP(userId, phone, ipAddress = null, userAgent = null) {
+    return this.generateAndSendOTP(phone, '2FA_SETUP', userId, ipAddress, userAgent);
   }
 
   // Verify 2FA OTP
@@ -512,34 +552,80 @@ class OTPService {
     }
   }
 
-  // Verify OTP for phone verification (SQLite compatible)
-  async verifyOTP(phone, otpCode) {
+  // Verify OTP for phone verification (SQLite compatible) - Updated to handle different OTP types
+  async verifyOTP(phone, otpCode, otpType = 'EMAIL_VERIFICATION') {
     try {
-      const otpResult = await query(`
-        SELECT * FROM otp_codes 
-        WHERE email = ? 
-        AND otp_code = ? 
-        AND otp_type = 'EMAIL_VERIFICATION'
-        AND is_used = 0 
-        AND expires_at > datetime('now')
-        ORDER BY created_at DESC 
-        LIMIT 1
-      `, [phone, otpCode]);
+      // For 2FA types, we need to look up by user_id from couples/vendors tables since users table doesn't have phone
+      let otpResult;
+      
+      if (otpType.startsWith('2FA_')) {
+        // For 2FA OTPs, first get ALL user_ids from couples/vendors tables, then find OTP for any of them
+        const userIdResult = await query(`
+          SELECT user_id FROM couples WHERE phone = $1
+          UNION
+          SELECT user_id FROM vendors WHERE phone = $1
+        `, [phone]);
+        
+        if (userIdResult.rows.length === 0) {
+          return {
+            success: false,
+            error: 'User not found for phone number',
+            message: 'Invalid or expired verification code'
+          };
+        }
+        
+        // Check for OTP records for ANY of the user_ids (since multiple users might share the same phone)
+        const userIds = userIdResult.rows.map(row => row.user_id);
+        const placeholders = userIds.map((_, index) => `$${index + 1}`).join(',');
+        
+        otpResult = await query(`
+          SELECT * FROM otp_codes
+          WHERE user_id IN (${placeholders})
+          AND otp_code = $${userIds.length + 1}
+          AND otp_type = $${userIds.length + 2}
+          AND is_used = 0 
+          AND expires_at > datetime('now')
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `, [...userIds, otpCode, otpType]);
+      } else {
+        // For other OTP types, use email field (which might contain phone)
+        otpResult = await query(`
+          SELECT * FROM otp_codes 
+          WHERE email = $1 
+          AND otp_code = $2 
+          AND otp_type = $3
+          AND is_used = 0 
+          AND expires_at > datetime('now')
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `, [phone, otpCode, otpType]);
+      }
 
       if (otpResult.rows.length === 0) {
         return {
           success: false,
-          error: 'Invalid or expired verification code'
+          error: 'Invalid or expired verification code',
+          message: 'Invalid or expired verification code'
         };
       }
 
       const otp = otpResult.rows[0];
 
+      // Check max attempts
+      if (otp.attempts >= this.MAX_ATTEMPTS) {
+        return {
+          success: false,
+          error: 'Maximum verification attempts exceeded',
+          message: 'Maximum verification attempts exceeded. Please request a new code.'
+        };
+      }
+
       // Mark OTP as used
       await query(`
         UPDATE otp_codes 
         SET is_used = 1, used_at = datetime('now') 
-        WHERE id = ?
+        WHERE id = $1
       `, [otp.id]);
 
       return {
@@ -551,7 +637,8 @@ class OTPService {
       console.error('Verify OTP error:', error);
       return {
         success: false,
-        error: 'Failed to verify OTP'
+        error: 'Failed to verify OTP',
+        message: 'Failed to verify OTP. Please try again.'
       };
     }
   }

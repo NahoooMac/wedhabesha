@@ -172,9 +172,9 @@ class MessagingErrorHandler {
       try {
         const result = await operation();
         
-        // Success - log if this was a retry
+        // Success - retry succeeded
         if (attempt > 0) {
-          console.log(`✅ ${operationName} succeeded after ${attempt + 1} attempts`);
+          // Operation succeeded after retry
         }
         
         return result;

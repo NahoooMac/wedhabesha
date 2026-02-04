@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { X, Sparkles, Check } from 'lucide-react';
-
-// Version: 3.0.0 - Direct template images without API
+import React, { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
+import { TEMPLATE_METADATA, RSVPInvitationData } from './InvitationEngine';
+import { weddingApi } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface TemplateGalleryModalProps {
   isOpen: boolean;
@@ -10,193 +11,159 @@ interface TemplateGalleryModalProps {
   currentTemplateId?: string;
 }
 
-// Template images from public/templates folder
-const templateImages = [
-  { id: 'template-1', name: 'Template 1', image: '/templates/Bg T1.jpg', description: 'Elegant wedding invitation design' },
-  { id: 'template-2', name: 'Template 2', image: '/templates/Bg T2.jpg', description: 'Beautiful floral pattern' },
-  { id: 'template-3', name: 'Template 3', image: '/templates/Bg T3.jpg', description: 'Classic and timeless' },
-  { id: 'template-4', name: 'Template 4', image: '/templates/Bg T4.jpg', description: 'Modern minimalist style' },
-  { id: 'template-5', name: 'Template 5', image: '/templates/Bg T5.jpg', description: 'Romantic and dreamy' },
-  { id: 'template-6', name: 'Template 6', image: '/templates/Bg T6.jpg', description: 'Sophisticated design' },
-  { id: 'template-7', name: 'Template 7', image: '/templates/Bg T7.jpg', description: 'Vintage inspired' },
-  { id: 'template-8', name: 'Template 8', image: '/templates/Bg T8.jpg', description: 'Contemporary elegance' },
-  { id: 'template-9', name: 'Template 9', image: '/templates/Bg T9.jpg', description: 'Artistic and unique' },
-  { id: 'template-10', name: 'Template 10', image: '/templates/Bg T10.jpg', description: 'Graceful and refined' },
-];
+const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({ isOpen, onClose, onSelectTemplate, currentTemplateId }) => {
+  const { user } = useAuth();
+  const [weddingData, setWeddingData] = useState<RSVPInvitationData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
-  isOpen,
-  onClose,
-  onSelectTemplate,
-  currentTemplateId
-}) => {
-  const [selectedId, setSelectedId] = useState<string | undefined>(currentTemplateId);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  useEffect(() => {
+    const fetchWeddingData = async () => {
+      if (!isOpen || !user) return;
+      
+      try {
+        setLoading(true);
+        const wedding = await weddingApi.getMyWedding();
+        
+        // Transform wedding data to RSVPInvitationData format
+        const invitationData: RSVPInvitationData = {
+          bride: "Bride",
+          groom: "Groom",
+          ceremony_date: wedding.wedding_date || new Date().toISOString().split('T')[0],
+          ceremony_time: wedding.customization?.ceremony_time || "4:00 PM",
+          venue_name: wedding.venue_name || "Grand Ballroom",
+          venue_address: wedding.venue_address || "City Center",
+          custom_message: wedding.customization?.custom_message || "Join us in celebrating our special day",
+          imageSettings: { x: 0, y: 0, scale: 1 }
+        };
+        
+        setWeddingData(invitationData);
+      } catch (error) {
+        console.error('Error fetching wedding data:', error);
+        // Use default data if fetch fails
+        setWeddingData({
+          bride: "Bride",
+          groom: "Groom",
+          ceremony_date: new Date().toISOString().split('T')[0],
+          ceremony_time: "4:00 PM",
+          venue_name: "Grand Ballroom",
+          venue_address: "City Center",
+          imageSettings: { x: 0, y: 0, scale: 1 }
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleSelect = (templateId: string) => {
-    setSelectedId(templateId);
-  };
-
-  const handleConfirm = () => {
-    if (selectedId) {
-      onSelectTemplate(selectedId);
-      onClose();
-    }
-  };
+    fetchWeddingData();
+  }, [isOpen, user]);
 
   if (!isOpen) return null;
 
+  const displayData = weddingData || {
+    bride: "Bride",
+    groom: "Groom",
+    ceremony_date: new Date().toISOString().split('T')[0],
+    ceremony_time: "4:00 PM",
+    venue_name: "Grand Ballroom",
+    venue_address: "City Center",
+    imageSettings: { x: 0, y: 0, scale: 1 }
+  };
+
+  // Template preview images mapping
+  const templatePreviewImages: Record<string, string> = {
+    "traditional2": "./templates/design 13.png",
+    "traditional": "./templates/design 12.png",
+    "coppergeo": "./templates/design 9.jpg",
+    "goldenrings": "./templates/design 14.jpg",
+    "classicframe": "./templates/design 11.jpg",
+    "elegantgold": "./templates/design 1.png",
+    "royal": "./templates/design 6.png",
+    "violetpeony": "./templates/design 2.png",
+    "purplegold": "./templates/design 3.png",
+    "greengeo": "./templates/design 4.png",
+    "bluefloral": "./templates/design 5.png",
+    "classic": "https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=600&fit=crop",
+    "modern": "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=400&h=600&fit=crop",
+    "rustic": "https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=400&h=600&fit=crop",
+    "botanical": "https://images.unsplash.com/photo-1452570053594-1b985d6ea890?w=400&h=600&fit=crop"
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Close Button */}
-      <button
-        onClick={onClose}
-        className="fixed top-6 right-6 z-50 w-12 h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-full flex items-center justify-center transition-all hover:scale-110"
-      >
-        <X className="w-6 h-6 text-white" />
-      </button>
-
-      {/* Header */}
-      <div className="relative z-10 pt-12 pb-8 px-8">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-purple-500/20 backdrop-blur-sm px-4 py-2 rounded-full mb-4">
-            <Sparkles className="w-5 h-5 text-purple-300" />
-            <span className="text-purple-200 text-sm font-medium">Choose Your Perfect Template</span>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-[95vw] w-full max-h-[95vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-8 border-b border-gray-200 bg-gradient-to-r from-rose-50 to-pink-50">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-1">Choose Your Perfect Template</h2>
+            <p className="text-sm text-gray-600">Select a design that matches your wedding style</p>
           </div>
-          <h1 className="text-5xl font-bold text-white mb-4">
-            Invitation Templates
-          </h1>
-          <p className="text-xl text-slate-300 max-w-2xl mx-auto">
-            Select a beautiful template for your wedding invitations. Each design is fully customizable.
-          </p>
+          <button 
+            onClick={onClose} 
+            className="text-gray-400 hover:text-gray-600 p-3 hover:bg-white rounded-xl transition-all"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10 px-8 pb-32 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 250px)' }}>
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {templateImages.map((template) => {
-              const isSelected = selectedId === template.id;
-              const isHovered = hoveredId === template.id;
-              const isCurrent = currentTemplateId === template.id;
-
-              return (
-                <div
-                  key={template.id}
-                  onClick={() => handleSelect(template.id)}
-                  onMouseEnter={() => setHoveredId(template.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  className={`group relative cursor-pointer transition-all duration-300 ${
-                    isSelected
-                      ? 'scale-105'
-                      : isHovered
-                      ? 'scale-102'
-                      : 'scale-100'
+        
+        <div className="flex-1 overflow-y-auto p-8">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-500"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              {TEMPLATE_METADATA.map(template => (
+                <div 
+                  key={template.id} 
+                  onClick={() => onSelectTemplate(template.id)} 
+                  className={`cursor-pointer group transform transition-all duration-300 hover:scale-105 ${
+                    currentTemplateId === template.id ? 'scale-105' : ''
                   }`}
                 >
-                  {/* Card */}
-                  <div
-                    className={`relative bg-white/10 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 ${
-                      isSelected
-                        ? 'ring-4 ring-purple-500 shadow-2xl shadow-purple-500/50'
-                        : 'ring-2 ring-white/20 hover:ring-white/40'
-                    }`}
+                  <div 
+                    className={`relative overflow-hidden rounded-2xl bg-gray-50 border-4 transition-all shadow-lg hover:shadow-2xl ${
+                      currentTemplateId === template.id 
+                        ? 'border-rose-500 ring-4 ring-rose-200' 
+                        : 'border-gray-200 hover:border-rose-300'
+                    }`} 
+                    style={{ aspectRatio: template.aspectRatio || '5/7' }}
                   >
-                    {/* Current Badge */}
-                    {isCurrent && (
-                      <div className="absolute top-3 left-3 z-10 bg-emerald-500 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-lg">
-                        <Check className="w-3 h-3" />
-                        Current
-                      </div>
-                    )}
-
-                    {/* Selected Badge */}
-                    {isSelected && !isCurrent && (
-                      <div className="absolute top-3 right-3 z-10 bg-purple-500 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-lg">
-                        <Check className="w-3 h-3" />
+                    {/* Use static image instead of rendering template */}
+                    <img 
+                      src={templatePreviewImages[template.id] || templatePreviewImages['elegantgold']} 
+                      alt={template.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                    {currentTemplateId === template.id && (
+                      <div className="absolute top-4 right-4 bg-rose-500 text-white px-4 py-2 rounded-full shadow-lg font-bold text-sm z-10">
                         Selected
                       </div>
                     )}
-
-                    {/* Template Preview */}
-                    <div className="aspect-[9/16] bg-slate-800 relative overflow-hidden">
-                      <img
-                        src={template.image}
-                        alt={template.name}
-                        className={`w-full h-full object-cover transition-transform duration-500 ${
-                          isHovered ? 'scale-110' : 'scale-100'
-                        }`}
-                      />
-
-                      {/* Hover Overlay */}
-                      <div
-                        className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${
-                          isHovered ? 'opacity-100' : 'opacity-0'
-                        }`}
-                      >
-                        <div className="absolute bottom-0 left-0 right-0 p-4">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelect(template.id);
-                            }}
-                            className="w-full bg-white/90 hover:bg-white text-slate-900 py-2.5 px-4 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
-                          >
-                            <Sparkles className="w-4 h-4" />
-                            {isSelected ? 'Selected' : 'Select Template'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Template Info */}
-                    <div className="p-4">
-                      <h3 className="font-bold text-white text-lg mb-1 truncate">
-                        {template.name}
-                      </h3>
-                      <p className="text-sm text-slate-300 line-clamp-2">
-                        {template.description}
-                      </p>
-                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                  </div>
+                  <div className="mt-4 text-center">
+                    <h3 className="font-bold text-gray-900 text-lg mb-1">{template.name}</h3>
+                    <p className="text-sm text-gray-600 mb-2">{template.description}</p>
+                    <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                      {template.category}
+                    </span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-
-      {/* Footer - Fixed at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 bg-slate-900/80 backdrop-blur-xl border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-8 py-6 flex items-center justify-between">
-          <div className="text-white">
-            <p className="text-sm text-slate-400">
-              {selectedId ? (
-                <>
-                  Selected: <span className="font-semibold text-white">{templateImages.find(t => t.id === selectedId)?.name}</span>
-                </>
-              ) : (
-                'Select a template to continue'
-              )}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onClose}
-              className="px-6 py-3 text-white hover:text-slate-300 transition-colors font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={!selectedId}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-semibold disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/50 disabled:shadow-none flex items-center gap-2"
-            >
-              <Sparkles className="w-5 h-5" />
-              Use This Template
-            </button>
-          </div>
+        
+        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+          <p className="text-sm text-gray-600">
+            {TEMPLATE_METADATA.length} templates available
+          </p>
+          <button 
+            onClick={onClose}
+            className="px-6 py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

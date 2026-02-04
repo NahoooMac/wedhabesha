@@ -70,7 +70,7 @@ router.get('/analytics', authenticateToken, requireRole('ADMIN'), async (req, re
 
     // Flagged reviews (with fallback)
     try {
-      const flaggedReviewsResult = await query("SELECT COUNT(*) as count FROM vendor_reviews WHERE is_flagged = 1 AND status = 'pending'");
+      const flaggedReviewsResult = await query("SELECT COUNT(*) as count FROM reviews WHERE is_flagged = 1");
       overview.flagged_reviews_pending = flaggedReviewsResult.rows[0].count;
     } catch (error) {
       overview.flagged_reviews_pending = 0;
@@ -681,62 +681,181 @@ router.delete('/users/:id', authenticateToken, requireRole('ADMIN'), async (req,
 });
 
 // Get Vendor Subscriptions
+// Get Vendor Performance Data
+router.get('/vendor-performance', authenticateToken, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const skip = parseInt(req.query.skip) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const tier = req.query.tier;
+    const category = req.query.category;
+
+    // Build the query with joins to get comprehensive vendor performance data
+    let whereConditions = ['v.id IS NOT NULL'];
+    let queryParams = [];
+
+    if (tier) {
+      whereConditions.push('vs.subscription_type = ?');
+      queryParams.push(tier);
+    }
+
+    if (category) {
+      whereConditions.push('v.category = ?');
+      queryParams.push(category);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    // Get vendor performance data with real metrics
+    const performanceQuery = `
+      SELECT 
+        v.id as vendor_id,
+        v.business_name,
+        v.category,
+        v.is_verified,
+        v.created_at,
+        vs.subscription_type as tier,
+        vs.status as subscription_status,
+        vs.price as monthly_fee,
+        COUNT(DISTINCT vl.id) as total_leads,
+        COUNT(DISTINCT r.id) as total_reviews,
+        COALESCE(AVG(r.rating), 0) as average_rating,
+        COUNT(DISTINCT CASE WHEN vl.status = 'converted' THEN vl.id END) as converted_leads,
+        MAX(vl.created_at) as last_activity
+      FROM vendors v
+      LEFT JOIN vendor_subscriptions vs ON v.id = vs.vendor_id
+      LEFT JOIN vendor_leads vl ON v.id = vl.vendor_id
+      LEFT JOIN reviews r ON v.id = r.vendor_id AND r.is_hidden = 0
+      ${whereClause}
+      GROUP BY v.id, v.business_name, v.category, v.is_verified, v.created_at, vs.subscription_type, vs.status, vs.price
+      ORDER BY average_rating DESC, total_leads DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    queryParams.push(limit, skip);
+
+    const performanceResult = await query(performanceQuery, queryParams);
+
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(DISTINCT v.id) as total
+      FROM vendors v
+      LEFT JOIN vendor_subscriptions vs ON v.id = vs.vendor_id
+      ${whereClause}
+    `;
+
+    const countResult = await query(countQuery, queryParams.slice(0, -2)); // Remove limit and offset
+    const total = countResult.rows[0].total;
+
+    // Calculate performance metrics for each vendor
+    const vendorsWithMetrics = performanceResult.rows.map(vendor => {
+      const conversionRate = vendor.total_leads > 0 ? 
+        (vendor.converted_leads / vendor.total_leads) * 100 : 0;
+      
+      // Calculate performance score based on multiple factors
+      const ratingScore = (vendor.average_rating / 5) * 30;
+      const reviewScore = Math.min(vendor.total_reviews / 20, 1) * 25;
+      const leadScore = Math.min(vendor.total_leads / 50, 1) * 25;
+      const conversionScore = (conversionRate / 40) * 20;
+      
+      const performanceScore = Math.round(ratingScore + reviewScore + leadScore + conversionScore);
+
+      return {
+        vendor_id: vendor.vendor_id,
+        business_name: vendor.business_name,
+        category: vendor.category || 'Uncategorized',
+        rating: parseFloat(vendor.average_rating.toFixed(1)),
+        total_reviews: vendor.total_reviews,
+        total_leads: vendor.total_leads,
+        converted_leads: vendor.converted_leads,
+        conversion_rate: parseFloat(conversionRate.toFixed(1)),
+        subscription_tier: vendor.tier || 'free',
+        subscription_status: vendor.subscription_status || 'inactive',
+        monthly_fee: vendor.monthly_fee || 0,
+        is_verified: vendor.is_verified,
+        created_at: vendor.created_at,
+        last_activity: vendor.last_activity || vendor.created_at,
+        performance_score: performanceScore
+      };
+    });
+
+    res.json({
+      vendors: vendorsWithMetrics,
+      total,
+      skip,
+      limit,
+      has_more: skip + limit < total
+    });
+
+  } catch (error) {
+    console.error('Get vendor performance error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get vendor performance data'
+    });
+  }
+});
+
+// Get Vendor Subscriptions (Updated with real data)
 router.get('/vendor-subscriptions', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const skip = parseInt(req.query.skip) || 0;
     const limit = parseInt(req.query.limit) || 20;
     const tier = req.query.tier;
 
-    // For now, return mock data since we don't have a vendor_subscriptions table
-    // In a real implementation, this would query the vendor_subscriptions table
-    const mockSubscriptions = [
-      {
-        id: 1,
-        vendor_id: 1,
-        tier: 'premium',
-        started_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        expires_at: new Date(Date.now() + 335 * 24 * 60 * 60 * 1000).toISOString(),
-        is_active: true,
-        business_name: "Elite Photography Studio",
-        vendor_email: "contact@elitephoto.com"
-      },
-      {
-        id: 2,
-        vendor_id: 2,
-        tier: 'basic',
-        started_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        expires_at: new Date(Date.now() + 350 * 24 * 60 * 60 * 1000).toISOString(),
-        is_active: true,
-        business_name: "Gourmet Catering Co",
-        vendor_email: "info@gourmetcatering.com"
-      },
-      {
-        id: 3,
-        vendor_id: 3,
-        tier: 'free',
-        started_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        expires_at: null,
-        is_active: true,
-        business_name: "Budget Flowers",
-        vendor_email: "hello@budgetflowers.com"
-      }
-    ];
+    // Build query with real subscription data
+    let whereConditions = [];
+    let queryParams = [];
 
-    let filteredSubscriptions = mockSubscriptions;
     if (tier) {
-      filteredSubscriptions = mockSubscriptions.filter(sub => sub.tier === tier);
+      whereConditions.push('vs.subscription_type = ?');
+      queryParams.push(tier);
     }
 
-    const total = filteredSubscriptions.length;
-    const hasMore = skip + limit < total;
-    const paginatedSubscriptions = filteredSubscriptions.slice(skip, skip + limit);
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    const subscriptionsQuery = `
+      SELECT 
+        vs.id,
+        vs.vendor_id,
+        v.business_name,
+        u.email as vendor_email,
+        vs.subscription_type as tier,
+        vs.status,
+        vs.start_date as started_at,
+        vs.end_date as expires_at,
+        vs.price as monthly_fee,
+        vs.features,
+        CASE WHEN vs.status = 'active' THEN 1 ELSE 0 END as is_active
+      FROM vendor_subscriptions vs
+      JOIN vendors v ON vs.vendor_id = v.id
+      JOIN users u ON v.user_id = u.id
+      ${whereClause}
+      ORDER BY vs.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    queryParams.push(limit, skip);
+
+    const subscriptionsResult = await query(subscriptionsQuery, queryParams);
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM vendor_subscriptions vs
+      JOIN vendors v ON vs.vendor_id = v.id
+      JOIN users u ON v.user_id = u.id
+      ${whereClause}
+    `;
+
+    const countResult = await query(countQuery, queryParams.slice(0, -2));
+    const total = countResult.rows[0].total;
 
     res.json({
-      subscriptions: paginatedSubscriptions,
+      subscriptions: subscriptionsResult.rows,
       total,
       skip,
       limit,
-      has_more: hasMore
+      has_more: skip + limit < total
     });
 
   } catch (error) {
@@ -800,51 +919,54 @@ router.put('/vendors/:id/subscription', authenticateToken, requireRole('ADMIN'),
   }
 });
 
-// Get Flagged Reviews
+// Get Flagged Reviews (Updated with real data)
 router.get('/reviews/flagged', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const skip = parseInt(req.query.skip) || 0;
     const limit = parseInt(req.query.limit) || 20;
 
-    // For now, return mock data since we don't have a reviews table with flagged content
-    // In a real implementation, this would query a reviews table with is_flagged column
-    const mockReviews = [
-      {
-        id: 1,
-        vendor_id: 1,
-        couple_id: 1,
-        rating: 1,
-        comment: "This vendor was terrible and unprofessional. Complete waste of money!",
-        is_flagged: true,
-        is_hidden: false,
-        created_at: new Date().toISOString(),
-        vendor_name: "Sample Photography Studio",
-        couple_name: "John & Jane Smith"
-      },
-      {
-        id: 2,
-        vendor_id: 2,
-        couple_id: 2,
-        rating: 2,
-        comment: "Bad service, would not recommend to anyone.",
-        is_flagged: true,
-        is_hidden: false,
-        created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        vendor_name: "Elite Catering Services",
-        couple_name: "Mike & Sarah Johnson"
-      }
-    ];
+    // Query real flagged reviews from the database
+    const flaggedReviewsQuery = `
+      SELECT 
+        r.id,
+        r.vendor_id,
+        r.user_id,
+        r.rating,
+        r.review_text as comment,
+        r.is_flagged,
+        r.is_hidden,
+        r.flagged_reason,
+        r.created_at,
+        r.updated_at,
+        v.business_name as vendor_name,
+        COALESCE(c.partner1_name || ' & ' || c.partner2_name, u.email) as couple_name
+      FROM reviews r
+      JOIN vendors v ON r.vendor_id = v.id
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN couples c ON u.id = c.user_id
+      WHERE r.is_flagged = 1
+      ORDER BY r.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
 
-    const total = mockReviews.length;
-    const hasMore = skip + limit < total;
-    const paginatedReviews = mockReviews.slice(skip, skip + limit);
+    const reviewsResult = await query(flaggedReviewsQuery, [limit, skip]);
+
+    // Get total count of flagged reviews
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM reviews r
+      WHERE r.is_flagged = 1
+    `;
+
+    const countResult = await query(countQuery);
+    const total = countResult.rows[0].total;
 
     res.json({
-      reviews: paginatedReviews,
+      reviews: reviewsResult.rows,
       total,
       skip,
       limit,
-      has_more: hasMore
+      has_more: skip + limit < total
     });
 
   } catch (error) {
@@ -856,7 +978,7 @@ router.get('/reviews/flagged', authenticateToken, requireRole('ADMIN'), async (r
   }
 });
 
-// Moderate Review
+// Moderate Review (Updated with real database operations)
 router.post('/reviews/:id/moderate', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const reviewId = parseInt(req.params.id);
@@ -869,8 +991,48 @@ router.post('/reviews/:id/moderate', authenticateToken, requireRole('ADMIN'), as
       });
     }
 
-    // In a real implementation, this would update the review in the database
-    // For now, return a success response
+    // Check if review exists
+    const reviewCheck = await query('SELECT id FROM reviews WHERE id = ?', [reviewId]);
+    if (reviewCheck.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Review not found'
+      });
+    }
+
+    // Update the review based on the moderation action
+    let updateQuery;
+    let updateParams;
+
+    switch (action) {
+      case 'approve':
+        updateQuery = `
+          UPDATE reviews 
+          SET is_flagged = 0, is_hidden = 0, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `;
+        updateParams = [reviewId];
+        break;
+      case 'hide':
+        updateQuery = `
+          UPDATE reviews 
+          SET is_flagged = 0, is_hidden = 1, flagged_reason = ?, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `;
+        updateParams = [reason || 'Hidden by admin', reviewId];
+        break;
+      case 'reject':
+        updateQuery = `
+          UPDATE reviews 
+          SET is_flagged = 0, is_hidden = 1, flagged_reason = ?, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `;
+        updateParams = [reason || 'Rejected for policy violation', reviewId];
+        break;
+    }
+
+    await query(updateQuery, updateParams);
+
     const moderationResult = {
       id: reviewId,
       status: 'moderated',
@@ -904,6 +1066,8 @@ router.post('/reviews/:id/moderate', authenticateToken, requireRole('ADMIN'), as
     });
   }
 });
+
+
 
 // Get Audit Logs
 router.get('/audit-logs', authenticateToken, requireRole('ADMIN'), async (req, res) => {

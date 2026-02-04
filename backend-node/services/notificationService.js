@@ -14,21 +14,29 @@ class NotificationService {
    */
   async initRedis() {
     try {
+      // Skip Redis in development if not available
+      if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL) {
+        console.log('ℹ️ Redis not configured for development - notifications will work without queuing');
+        return;
+      }
+
       this.redisClient = redis.createClient({
         url: process.env.REDIS_URL || 'redis://localhost:6379',
         socket: {
           reconnectStrategy: (retries) => {
-            if (retries > 10) {
+            if (retries > 3) {
               console.error('❌ Redis max reconnection attempts reached');
               return new Error('Redis connection failed');
             }
-            return Math.min(retries * 100, 3000);
+            return Math.min(retries * 100, 1000);
           }
         }
       });
 
       this.redisClient.on('error', (err) => {
         console.error('❌ Redis Client Error:', err);
+        // Don't crash the application
+        this.redisClient = null;
       });
 
       this.redisClient.on('connect', () => {
@@ -38,7 +46,8 @@ class NotificationService {
       await this.redisClient.connect();
     } catch (error) {
       console.error('❌ Failed to initialize Redis:', error);
-      // Continue without Redis - notifications will still work but without queuing
+      console.log('ℹ️ Continuing without Redis - notifications will still work but without queuing');
+      this.redisClient = null;
     }
   }
   /**

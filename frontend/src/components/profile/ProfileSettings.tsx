@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import TwoFactorSetup from '../auth/TwoFactorSetup';
+import { apiClient } from '../../lib/api';
+
+interface TwoFactorStatus {
+  enabled: boolean;
+  method: 'sms' | 'authenticator';
+  hasSecret: boolean;
+  backupCodes: {
+    total: number;
+    unused: number;
+  };
+}
 
 interface ProfileData {
   partner1_name?: string;
@@ -26,6 +38,7 @@ const ProfileSettings: React.FC = () => {
   
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
   
   const [profileData, setProfileData] = useState<ProfileData>({
     partner1_name: '',
@@ -41,6 +54,12 @@ const ProfileSettings: React.FC = () => {
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Get 2FA status
+  const { data: twoFactorStatus, refetch: refetch2FAStatus } = useQuery<TwoFactorStatus>({
+    queryKey: ['2fa-status'],
+    queryFn: () => apiClient.get('/api/v1/auth/2fa/status'),
+  });
 
   // Profile update mutation
   const updateProfileMutation = useMutation({
@@ -100,6 +119,20 @@ const ProfileSettings: React.FC = () => {
     },
     onError: (error: any) => {
       setErrors({ password: error.message });
+    },
+  });
+
+  // Disable 2FA mutation
+  const disable2FAMutation = useMutation({
+    mutationFn: async (data: { currentPassword: string; token: string }) => {
+      return apiClient.post('/api/v1/auth/2fa/disable', data);
+    },
+    onSuccess: () => {
+      refetch2FAStatus();
+      setErrors({});
+    },
+    onError: (error: any) => {
+      setErrors({ twoFactor: error.message || 'Failed to disable 2FA' });
     },
   });
 
@@ -434,6 +467,147 @@ const ProfileSettings: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Two-Factor Authentication */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                Two-Factor Authentication
+              </CardTitle>
+              <CardDescription>
+                Add an extra layer of security to your account
+              </CardDescription>
+            </div>
+            {twoFactorStatus?.enabled ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-3 py-1 bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400 rounded-full text-sm font-medium">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Enabled
+                </div>
+                <Button
+                  onClick={() => {
+                    // For now, we'll show a simple alert. In a full implementation, 
+                    // you'd want a proper disable 2FA modal with password confirmation
+                    const currentPassword = prompt('Enter your current password to disable 2FA:');
+                    const token = prompt('Enter your 2FA code:');
+                    if (currentPassword && token) {
+                      disable2FAMutation.mutate({ currentPassword, token });
+                    }
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20"
+                  disabled={disable2FAMutation.isPending}
+                >
+                  {disable2FAMutation.isPending ? 'Disabling...' : 'Disable'}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={() => setShowTwoFactorSetup(true)}
+                variant="outline"
+                className="border-rose-300 text-rose-600 hover:bg-rose-50 dark:border-rose-600 dark:text-rose-400 dark:hover:bg-rose-900/20"
+              >
+                Enable 2FA
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {twoFactorStatus?.enabled ? (
+              <>
+                <div className="flex items-start gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <svg className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <h4 className="font-medium text-green-800 dark:text-green-200 mb-1">
+                      2FA is Active
+                    </h4>
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      Your account is protected with {twoFactorStatus.method === 'sms' ? 'SMS' : 'Authenticator App'} two-factor authentication.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Method</p>
+                    <p className="text-gray-900 dark:text-white">
+                      {twoFactorStatus.method === 'sms' ? 'SMS Text Message' : 'Authenticator App'}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Backup Codes</p>
+                    <p className="text-gray-900 dark:text-white">
+                      {twoFactorStatus.backupCodes.unused} of {twoFactorStatus.backupCodes.total} unused
+                    </p>
+                  </div>
+                </div>
+
+                {twoFactorStatus.backupCodes.unused < 3 && (
+                  <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <div>
+                      <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1">
+                        Low Backup Codes
+                      </h4>
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        You have {twoFactorStatus.backupCodes.unused} backup codes remaining. Consider regenerating new ones.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                    Enhance Your Security
+                  </h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
+                    Two-factor authentication adds an extra layer of security to your account by requiring a second form of verification when signing in.
+                  </p>
+                  <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• Choose between SMS or Authenticator App</li>
+                    <li>• Get backup codes for account recovery</li>
+                    <li>• Protect against unauthorized access</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {errors.twoFactor && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                <p className="text-sm text-red-600 dark:text-red-400">{errors.twoFactor}</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Two-Factor Setup Modal */}
+      <TwoFactorSetup
+        isOpen={showTwoFactorSetup}
+        onClose={() => setShowTwoFactorSetup(false)}
+        onSuccess={() => {
+          refetch2FAStatus();
+          setShowTwoFactorSetup(false);
+        }}
+      />
     </div>
   );
 };

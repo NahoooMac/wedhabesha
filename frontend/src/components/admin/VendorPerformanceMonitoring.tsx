@@ -1,25 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { vendorApi, adminApi } from '../../lib/api';
+import { vendorApi, adminApi, VendorPerformanceData } from '../../lib/api';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 
 interface VendorPerformanceMonitoringProps {
   className?: string;
-}
-
-interface VendorPerformanceData {
-  vendor_id: number;
-  business_name: string;
-  category: string;
-  rating: number;
-  total_reviews: number;
-  total_leads: number;
-  conversion_rate: number;
-  subscription_tier: string;
-  is_verified: boolean;
-  created_at: string;
-  last_activity: string;
 }
 
 export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringProps> = ({ className }) => {
@@ -35,41 +21,16 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
     queryFn: () => vendorApi.getCategories()
   });
 
-  // Fetch vendor subscriptions for performance data
-  const { data: subscriptionsData, isLoading, error } = useQuery({
-    queryKey: ['vendor-subscriptions', selectedTier, currentPage],
-    queryFn: () => adminApi.getVendorSubscriptions(
+  // Fetch vendor performance data from real API
+  const { data: performanceData, isLoading, error } = useQuery({
+    queryKey: ['vendor-performance', selectedTier, selectedCategory, currentPage],
+    queryFn: () => adminApi.getVendorPerformance(
       selectedTier as any || undefined,
+      selectedCategory || undefined,
       currentPage * pageSize,
       pageSize
     )
   });
-
-  // Mock performance data - in real implementation, this would come from analytics API
-  const getPerformanceData = (subscription: any): VendorPerformanceData => {
-    return {
-      vendor_id: subscription.vendor_id,
-      business_name: subscription.business_name,
-      category: 'Photography', // Would come from vendor data
-      rating: Math.random() * 2 + 3, // 3-5 rating
-      total_reviews: Math.floor(Math.random() * 50) + 5,
-      total_leads: Math.floor(Math.random() * 100) + 10,
-      conversion_rate: Math.random() * 30 + 10, // 10-40%
-      subscription_tier: subscription.tier,
-      is_verified: true,
-      created_at: subscription.started_at,
-      last_activity: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-    };
-  };
-
-  const getPerformanceScore = (data: VendorPerformanceData) => {
-    const ratingScore = (data.rating / 5) * 30;
-    const reviewScore = Math.min(data.total_reviews / 20, 1) * 25;
-    const leadScore = Math.min(data.total_leads / 50, 1) * 25;
-    const conversionScore = (data.conversion_rate / 40) * 20;
-    
-    return Math.round(ratingScore + reviewScore + leadScore + conversionScore);
-  };
 
   const getPerformanceLevel = (score: number) => {
     if (score >= 80) return { level: 'Excellent', color: 'text-green-600', bg: 'bg-green-100' };
@@ -109,7 +70,21 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
     );
   }
 
-  const performanceData = subscriptionsData?.subscriptions.map(getPerformanceData) || [];
+  const vendors = performanceData?.vendors || [];
+
+  // Sort vendors based on selected criteria
+  const sortedVendors = [...vendors].sort((a, b) => {
+    switch (sortBy) {
+      case 'rating':
+        return b.rating - a.rating;
+      case 'leads':
+        return b.total_leads - a.total_leads;
+      case 'conversion':
+        return b.conversion_rate - a.conversion_rate;
+      default:
+        return 0;
+    }
+  });
 
   return (
     <div className={className}>
@@ -196,7 +171,7 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
         <Card className="p-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900">
-              {performanceData.length}
+              {performanceData?.total || 0}
             </div>
             <div className="text-sm text-gray-600">Total Vendors</div>
           </div>
@@ -205,7 +180,7 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
         <Card className="p-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-green-600">
-              {performanceData.filter(v => getPerformanceScore(v) >= 80).length}
+              {vendors.filter(v => v.performance_score >= 80).length}
             </div>
             <div className="text-sm text-gray-600">Excellent Performance</div>
           </div>
@@ -214,7 +189,7 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
         <Card className="p-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-blue-600">
-              {(performanceData.reduce((sum, v) => sum + v.rating, 0) / performanceData.length || 0).toFixed(1)}
+              {vendors.length > 0 ? (vendors.reduce((sum, v) => sum + v.rating, 0) / vendors.length).toFixed(1) : '0.0'}
             </div>
             <div className="text-sm text-gray-600">Average Rating</div>
           </div>
@@ -223,7 +198,7 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
         <Card className="p-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-purple-600">
-              {(performanceData.reduce((sum, v) => sum + v.conversion_rate, 0) / performanceData.length || 0).toFixed(1)}%
+              {vendors.length > 0 ? (vendors.reduce((sum, v) => sum + v.conversion_rate, 0) / vendors.length).toFixed(1) : '0.0'}%
             </div>
             <div className="text-sm text-gray-600">Avg Conversion Rate</div>
           </div>
@@ -232,9 +207,8 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
 
       {/* Vendor Performance List */}
       <div className="space-y-4 mb-6">
-        {performanceData.map((vendor) => {
-          const score = getPerformanceScore(vendor);
-          const performance = getPerformanceLevel(score);
+        {sortedVendors.map((vendor) => {
+          const performance = getPerformanceLevel(vendor.performance_score);
           
           return (
             <Card key={vendor.vendor_id} className="p-6">
@@ -248,12 +222,17 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${performance.bg} ${performance.color}`}>
                       {performance.level}
                     </span>
+                    {vendor.is_verified && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        VERIFIED
+                      </span>
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                     <div>
                       <p className="text-sm text-gray-600">Performance Score</p>
-                      <p className="text-xl font-bold text-gray-900">{score}/100</p>
+                      <p className="text-xl font-bold text-gray-900">{vendor.performance_score}/100</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Rating</p>
@@ -273,9 +252,12 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-4">
                     <div>
                       <span className="font-medium">Category:</span> {vendor.category}
+                    </div>
+                    <div>
+                      <span className="font-medium">Monthly Fee:</span> ${vendor.monthly_fee}
                     </div>
                     <div>
                       <span className="font-medium">Last Activity:</span>{' '}
@@ -287,16 +269,16 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
                   <div className="mt-4">
                     <div className="flex items-center justify-between text-sm mb-1">
                       <span className="text-gray-600">Performance Score</span>
-                      <span className="font-medium">{score}/100</span>
+                      <span className="font-medium">{vendor.performance_score}/100</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full ${
-                          score >= 80 ? 'bg-green-500' :
-                          score >= 60 ? 'bg-blue-500' :
-                          score >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                          vendor.performance_score >= 80 ? 'bg-green-500' :
+                          vendor.performance_score >= 60 ? 'bg-blue-500' :
+                          vendor.performance_score >= 40 ? 'bg-yellow-500' : 'bg-red-500'
                         }`}
-                        style={{ width: `${score}%` }}
+                        style={{ width: `${vendor.performance_score}%` }}
                       ></div>
                     </div>
                   </div>
@@ -307,13 +289,26 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
         })}
       </div>
 
+      {/* Empty State */}
+      {vendors.length === 0 && (
+        <Card className="p-8 text-center">
+          <div className="text-gray-400 mb-2">
+            <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">No Vendor Performance Data</h3>
+          <p className="text-gray-600">No vendors match the current filters or there is no performance data available.</p>
+        </Card>
+      )}
+
       {/* Pagination */}
-      {subscriptionsData && subscriptionsData.total > pageSize && (
+      {performanceData && performanceData.total > pageSize && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-700">
             Showing {currentPage * pageSize + 1} to{' '}
-            {Math.min((currentPage + 1) * pageSize, subscriptionsData.total)} of{' '}
-            {subscriptionsData.total} vendors
+            {Math.min((currentPage + 1) * pageSize, performanceData.total)} of{' '}
+            {performanceData.total} vendors
           </p>
           <div className="flex gap-2">
             <Button
@@ -325,7 +320,7 @@ export const VendorPerformanceMonitoring: React.FC<VendorPerformanceMonitoringPr
             </Button>
             <Button
               onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={!subscriptionsData.has_more}
+              disabled={!performanceData.has_more}
               variant="outline"
             >
               Next

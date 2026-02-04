@@ -32,27 +32,20 @@ export class CacheInvalidationService {
     }
 
     try {
-      console.log(`🔄 Starting cache invalidation for wedding ${weddingId}`);
-      
       // Invalidate guest list
       await this.queryClient.invalidateQueries({ 
         queryKey: ['guests', weddingId] 
       });
-      console.log(`✅ Invalidated guests query for wedding ${weddingId}`);
 
       // Invalidate RSVP analytics
       await this.queryClient.invalidateQueries({ 
         queryKey: ['rsvp-analytics', weddingId] 
       });
-      console.log(`✅ Invalidated RSVP analytics query for wedding ${weddingId}`);
 
       // Invalidate any other guest-related queries
       await this.queryClient.invalidateQueries({ 
         queryKey: ['wedding', weddingId] 
       });
-      console.log(`✅ Invalidated wedding query for wedding ${weddingId}`);
-
-      console.log(`🎉 Cache invalidation completed successfully for wedding ${weddingId}`);
     } catch (error) {
       console.error(`❌ Failed to invalidate cache for wedding ${weddingId}:`, error);
     }
@@ -67,9 +60,7 @@ export class CacheInvalidationService {
     await this.invalidateGuestData(weddingId);
     
     // Also trigger a small delay to ensure backend has processed the update
-    console.log(`⏱️ Scheduling delayed cache invalidation for wedding ${weddingId}`);
     setTimeout(() => {
-      console.log(`🔄 Executing delayed cache invalidation for wedding ${weddingId}`);
       this.invalidateGuestData(weddingId);
     }, 1000);
   }

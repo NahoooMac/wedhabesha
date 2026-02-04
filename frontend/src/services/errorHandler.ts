@@ -230,7 +230,7 @@ class ErrorHandlerService {
   /**
    * Get appropriate console method based on severity
    */
-  private getLogMethod(severity: ErrorSeverity): typeof console.log {
+  private getLogMethod(severity: ErrorSeverity): typeof console.error {
     switch (severity) {
       case ErrorSeverity.CRITICAL:
       case ErrorSeverity.HIGH:
@@ -239,7 +239,7 @@ class ErrorHandlerService {
         return console.warn;
       case ErrorSeverity.LOW:
       default:
-        return console.log;
+        return console.error; // Changed from console.log to console.error
     }
   }
 
@@ -248,7 +248,7 @@ class ErrorHandlerService {
    */
   private sendToMonitoring(errorDetails: ErrorDetails): void {
     // In a real application, this would send to Sentry, LogRocket, etc.
-    console.log('Sending to monitoring service:', errorDetails);
+    // Removed console.log for production
   }
 
   /**

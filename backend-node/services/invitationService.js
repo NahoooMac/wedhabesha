@@ -200,8 +200,10 @@ class InvitationService {
           w.wedding_date,
           w.venue_name,
           w.venue_address,
-          w.invitation_template_id,
-          w.invitation_customization
+          w.template_id,
+          w.template_customization,
+          w.invitation_image_url,
+          w.image_settings
         FROM guests g
         JOIN weddings w ON g.wedding_id = w.id
         WHERE w.wedding_code = ? AND g.unique_code = ?
@@ -215,11 +217,21 @@ class InvitationService {
       
       // Parse customization JSON
       let customization = {};
-      if (row.invitation_customization) {
+      if (row.template_customization) {
         try {
-          customization = JSON.parse(row.invitation_customization);
+          customization = JSON.parse(row.template_customization);
         } catch (e) {
-          console.error('Failed to parse invitation_customization:', e);
+          console.error('Failed to parse template_customization:', e);
+        }
+      }
+      
+      // Parse image_settings JSON
+      let imageSettings = null;
+      if (row.image_settings) {
+        try {
+          imageSettings = JSON.parse(row.image_settings);
+        } catch (e) {
+          console.error('Failed to parse image_settings:', e);
         }
       }
       
@@ -238,8 +250,10 @@ class InvitationService {
           wedding_date: row.wedding_date,
           venue_name: row.venue_name,
           venue_address: row.venue_address,
-          template_id: row.invitation_template_id,
-          customization
+          template_id: row.template_id || 'elegant-gold', // Default template if none selected
+          customization,
+          invitation_image_url: row.invitation_image_url,
+          image_settings: imageSettings
         }
       };
     } catch (error) {

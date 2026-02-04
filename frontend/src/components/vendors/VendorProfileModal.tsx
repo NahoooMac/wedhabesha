@@ -77,7 +77,7 @@ const VendorProfileModal: React.FC<VendorProfileModalProps> = ({
       try {
         await navigator.share(shareData);
       } catch (error) {
-        console.log('Share cancelled');
+        // Share cancelled or failed
       }
     } else {
       setShowShareMenu(!showShareMenu);

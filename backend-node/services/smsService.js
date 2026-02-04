@@ -11,6 +11,8 @@ class SMSService {
     
     // Test phone numbers that bypass SMS API
     this.testPhoneNumbers = [
+      '+251901959439',
+      '+251937105764',
       '+251911234567',
       '+251912345678',
       '+251913456789',
@@ -83,8 +85,24 @@ class SMSService {
 
   // Format Ethiopian phone numbers
   formatPhoneNumber(phone) {
+    // Handle null or undefined phone numbers
+    if (!phone || phone === null || phone === undefined) {
+      throw new Error('Phone number is required and cannot be null or undefined');
+    }
+    
+    // Convert to string if it's not already
+    const phoneStr = String(phone).trim();
+    
+    if (!phoneStr) {
+      throw new Error('Phone number cannot be empty');
+    }
+    
     // Remove any non-digit characters
-    let cleaned = phone.replace(/\D/g, '');
+    let cleaned = phoneStr.replace(/\D/g, '');
+    
+    if (!cleaned) {
+      throw new Error('Phone number must contain digits');
+    }
     
     // Handle different Ethiopian phone number formats
     if (cleaned.startsWith('251')) {
@@ -103,19 +121,29 @@ class SMSService {
 
   // Send single SMS
   async sendSMS(to, message, options = {}) {
-    const formattedPhone = this.formatPhoneNumber(to);
+    // Handle null or undefined phone numbers
+    if (!to || to === null || to === undefined) {
+      console.log('⚠️ SMS not sent: Phone number is null or undefined');
+      return {
+        success: false,
+        message: 'Phone number is required for SMS',
+        error: 'Phone number is null or undefined'
+      };
+    }
     
-    // Check if this is a test phone number
-    if (this.isTestPhoneNumber(formattedPhone)) {
-      console.log(`📱 [TEST MODE] Using test phone number: ${formattedPhone}`);
-      return this.generateMockSMSResponse(formattedPhone, message);
-    }
-
-    if (!this.isConfigured()) {
-      throw new Error('SMS service not configured');
-    }
-
     try {
+      const formattedPhone = this.formatPhoneNumber(to);
+      
+      // Check if this is a test phone number
+      if (this.isTestPhoneNumber(formattedPhone)) {
+        console.log(`📱 [TEST MODE] Using test phone number: ${formattedPhone}`);
+        return this.generateMockSMSResponse(formattedPhone, message);
+      }
+
+      if (!this.isConfigured()) {
+        throw new Error('SMS service not configured');
+      }
+
       const payload = {
         to: formattedPhone,
         message: message,

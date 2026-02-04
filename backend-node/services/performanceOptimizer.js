@@ -25,7 +25,7 @@ class PerformanceOptimizer {
    */
   async initializeRedis() {
     if (!this.cacheEnabled) {
-      console.log('⚠️ Redis not configured, caching disabled');
+      console.log('ℹ️ Redis not configured, caching disabled');
       return;
     }
 
@@ -35,24 +35,28 @@ class PerformanceOptimizer {
         port: process.env.REDIS_PORT || 6379,
         password: process.env.REDIS_PASSWORD || undefined,
         retryStrategy: (times) => {
-          const delay = Math.min(times * 50, 2000);
-          return delay;
-        },
-        maxRetriesPerRequest: 3
+          if (times > 3) {
+            console.log('❌ Performance Optimizer Redis connection failed, disabling cache');
+            this.cacheEnabled = false;
+            return null; // Stop retrying
+          }
+          return Math.min(times * 50, 1000);
+        }
+      });
+
+      this.redis.on('error', (err) => {
+        console.error('❌ Performance Optimizer Redis Error:', err);
+        this.cacheEnabled = false;
+        this.redis = null;
       });
 
       this.redis.on('connect', () => {
-        console.log('✅ Redis connected for performance caching');
+        console.log('✅ Performance Optimizer Redis connected');
       });
-
-      this.redis.on('error', (error) => {
-        console.error('❌ Redis connection error:', error);
-        this.cacheEnabled = false;
-      });
-
     } catch (error) {
-      console.error('❌ Failed to initialize Redis:', error);
+      console.error('❌ Failed to initialize Performance Optimizer Redis:', error);
       this.cacheEnabled = false;
+      this.redis = null;
     }
   }
 

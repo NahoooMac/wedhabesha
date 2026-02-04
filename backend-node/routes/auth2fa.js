@@ -9,6 +9,32 @@ const twoFactorService = require('../services/twoFactorService');
 
 const router = express.Router();
 
+// Helper function to get user's phone number from couples or vendors table
+async function getUserPhone(userId) {
+  try {
+    // Check couples table if user is a couple
+    const coupleResult = await query(`SELECT phone FROM couples WHERE user_id = $1`, [userId]);
+    if (coupleResult.rows.length > 0 && coupleResult.rows[0].phone && String(coupleResult.rows[0].phone).trim()) {
+      return coupleResult.rows[0].phone;
+    }
+  } catch (error) {
+    console.log('Error checking couples table:', error.message);
+  }
+  
+  try {
+    // Check vendors table if user is a vendor
+    const vendorResult = await query(`SELECT phone FROM vendors WHERE user_id = $1`, [userId]);
+    if (vendorResult.rows.length > 0 && vendorResult.rows[0].phone && String(vendorResult.rows[0].phone).trim()) {
+      return vendorResult.rows[0].phone;
+    }
+  } catch (error) {
+    console.log('Error checking vendors table:', error.message);
+  }
+  
+  console.warn(`No phone number found for user ID: ${userId}`);
+  return null;
+}
+
 // Validation rules
 const forgotPasswordValidation = [
   body('phone').matches(/^(\+251|0)[9][0-9]{8}$/).withMessage('Please enter a valid Ethiopian phone number (format: +251912345678 or 0912345678)')
@@ -147,38 +173,67 @@ router.get('/2fa/status', authenticateToken, async (req, res) => {
   }
 });
 
-// Start 2FA setup (generate secret and QR code)
+// Start 2FA setup (generate secret and QR code for authenticator or setup SMS)
 router.post('/2fa/setup', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const userEmail = req.user.email;
+    const { method = 'authenticator' } = req.body;
 
-    // Generate secret
-    const secretResult = await twoFactorService.generateSecret(userId, userEmail);
-    
-    if (!secretResult.success) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: secretResult.message
+    if (method === 'sms') {
+      // Setup SMS 2FA - get phone number from appropriate table
+      const phone = await getUserPhone(userId);
+      
+      if (!phone) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'Phone number is required for SMS 2FA. Please update your profile first.'
+        });
+      }
+
+      const result = await twoFactorService.setupSMS2FA(userId, phone);
+      
+      if (!result.success) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: result.message
+        });
+      }
+
+      return res.json({
+        message: result.message,
+        method: 'sms'
+      });
+    } else {
+      // Setup authenticator 2FA (existing logic)
+      // Generate secret
+      const secretResult = await twoFactorService.generateSecret(userId, userEmail);
+      
+      if (!secretResult.success) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: secretResult.message
+        });
+      }
+
+      // Generate QR code
+      const qrResult = await twoFactorService.generateQRCode(secretResult.qrCodeUrl);
+      
+      if (!qrResult.success) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: qrResult.message
+        });
+      }
+
+      res.json({
+        message: '2FA setup initiated. Scan the QR code with your authenticator app.',
+        secret: secretResult.secret,
+        qrCode: qrResult.qrCode,
+        manualEntryKey: secretResult.secret,
+        method: 'authenticator'
       });
     }
-
-    // Generate QR code
-    const qrResult = await twoFactorService.generateQRCode(secretResult.qrCodeUrl);
-    
-    if (!qrResult.success) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: qrResult.message
-      });
-    }
-
-    res.json({
-      message: '2FA setup initiated. Scan the QR code with your authenticator app.',
-      secret: secretResult.secret,
-      qrCode: qrResult.qrCode,
-      manualEntryKey: secretResult.secret
-    });
 
   } catch (error) {
     console.error('2FA setup error:', error);
@@ -201,18 +256,19 @@ router.post('/2fa/enable', authenticateToken, verify2FAValidation, async (req, r
       });
     }
 
-    const { token } = req.body;
+    const { token, method = 'authenticator' } = req.body;
     const userId = req.user.id;
-    const userPhone = req.user.phone;
+    const userPhone = await getUserPhone(userId);
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent');
 
-    const result = await twoFactorService.enable2FA(userId, userPhone, token, ipAddress, userAgent);
+    const result = await twoFactorService.enable2FA(userId, userPhone, token, method, ipAddress, userAgent);
     
     if (result.success) {
       res.json({
         message: result.message,
-        backupCodes: result.backupCodes
+        backupCodes: result.backupCodes,
+        method: result.method
       });
     } else {
       res.status(400).json({
@@ -243,7 +299,7 @@ router.post('/2fa/disable', authenticateToken, async (req, res) => {
     }
 
     const userId = req.user.id;
-    const userPhone = req.user.phone;
+    const userPhone = await getUserPhone(userId);
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent');
 
@@ -372,7 +428,7 @@ router.post('/2fa/regenerate-backup-codes', authenticateToken, async (req, res) 
     }
 
     const userId = req.user.id;
-    const userPhone = req.user.phone;
+    const userPhone = await getUserPhone(userId);
     const ipAddress = req.ip || req.connection.remoteAddress;
 
     const result = await twoFactorService.regenerateBackupCodes(userId, userPhone, currentPassword, token, ipAddress);
@@ -453,6 +509,33 @@ router.post('/login/check-2fa', async (req, res) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to check 2FA requirement'
+    });
+  }
+});
+
+// Send SMS OTP for login (for SMS 2FA method)
+router.post('/2fa/send-sms', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await twoFactorService.sendLoginSMS(userId);
+    
+    if (result.success) {
+      res.json({
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: result.message
+      });
+    }
+
+  } catch (error) {
+    console.error('Send SMS 2FA error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to send SMS verification code'
     });
   }
 });

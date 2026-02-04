@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Users, 
   Store, 
@@ -36,17 +37,18 @@ import {
   Linkedin
 } from 'lucide-react';
 
-// --- MOCK AUTH HOOK ---
-const useAuth = () => {
-  const [user, setUser] = useState<{email: string, user_type: string} | null>(null);
-  
-  const logout = async () => {
-    setUser(null);
-    console.log("Logged out");
-  };
 
-  return { user, logout };
-};
+// --- MOCK AUTH HOOK ---
+// const useAuth = () => {
+//   const [user, setUser] = useState<{email: string, user_type: string} | null>(null);
+  
+//   const logout = async () => {
+//     setUser(null);
+//     console.log("Logged out");
+//   };
+
+//   return { user, logout };
+// };
 
 // --- CUSTOM FONT STYLES & ANIMATIONS ---
 const FontStyles = () => (
@@ -167,7 +169,7 @@ const translations = {
     cta: {
       badge: "Start for free today",
       title: "Ready to plan the wedding of your dreams?",
-      subtitle: "Join thousands of Ethiopian couples who trust WedHabesha to make their big day perfect.",
+      subtitle: "Join thousands of Ethiopian couples who trust WedHabesha  to make their big day perfect.",
       btnPrimary: "Get Started Now",
       btnSecondary: "Explore Vendors"
     },
@@ -371,9 +373,14 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, isDarkMode, to
                    <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
                </Link>
                
+               <Link to="/templates" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                   Templates
+                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+               </Link>
+               
                <Link to="/pricing" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
                    {t.nav.pricing}
-                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+                   <span className="absolute bottom-0 left-0 w-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
                </Link>
                
                {user && (
@@ -472,6 +479,10 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, isDarkMode, to
            <div className="md:hidden absolute top-20 left-0 w-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800 p-6 flex flex-col gap-4 shadow-2xl animate-in slide-in-from-top-5">
               <Link to="/vendors" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
                 {t.nav.vendors} <ChevronRight className="w-5 h-5 text-gray-400"/>
+              </Link>
+              
+              <Link to="/templates" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+                Templates <ChevronRight className="w-5 h-5 text-gray-400"/>
               </Link>
               
               <Link to="/pricing" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
@@ -595,8 +606,8 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, isDarkMode, to
               <h4 className="font-bold text-gray-900 dark:text-white mb-6 font-menbere">{t.footer.company}</h4>
               <ul className="space-y-4 text-gray-600 dark:text-gray-400">
                 <li><Link to="/about" className="hover:text-rose-600 transition-colors">About Us</Link></li>
-                <li><a href="#" className="hover:text-rose-600 transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-rose-600 transition-colors">Press & Media</a></li>
+               <li><Link to="/careers" className="hover:text-rose-600 transition-colors">Careers</Link></li>
+                               <li><Link to="/press" className="hover:text-rose-600 transition-colors">Press & Media</Link></li>
               </ul>
             </div>
             
@@ -623,9 +634,9 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, isDarkMode, to
           <div className="border-t border-gray-200 dark:border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-500">
             <p>© {new Date().getFullYear()} WedHabesha. {t.footer.rights}</p>
             <div className="flex gap-6">
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white">Privacy</a>
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white">Terms</a>
-              <a href="#" className="hover:text-gray-900 dark:hover:text-white">Sitemap</a>
+               <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-white">Privacy</Link>
+                <Link to="/terms" className="hover:text-gray-900 dark:hover:text-white">Terms</Link>
+                <Link to="/sitemap" className="hover:text-gray-900 dark:hover:text-white">Sitemap</Link>
             </div>
           </div>
         </div>
@@ -920,7 +931,7 @@ const HomePage: React.FC = () => {
         </div>
 
         {/* Roadmap Section - "The Journey" */}
-        <div className="py-24 bg-gray-50 dark:bg-gray-950 border-t border-gray-100 dark:border-gray-900">
+        <div className="pl-20 py-24 bg-gray-50 dark:bg-gray-950 border-t border-gray-100 dark:border-gray-900">
           <div className="container mx-auto px-4">
               <div className="flex flex-col md:flex-row items-start justify-between gap-16">
                 

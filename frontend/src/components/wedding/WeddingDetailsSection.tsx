@@ -295,7 +295,6 @@ const WeddingDetailsSection: React.FC<WeddingDetailsSectionProps> = ({
           onClose={() => setShowEditModal(false)}
           onSuccess={() => {
             // Refresh the wedding data if needed
-            console.log('Wedding updated successfully');
           }}
         />
       )}

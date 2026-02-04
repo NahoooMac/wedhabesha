@@ -283,6 +283,17 @@ router.post('/register/vendor', vendorRegisterValidation, async (req, res) => {
       });
     }
 
+    // Check if phone number is already taken (if provided)
+    if (phone) {
+      const existingPhone = await query('SELECT id FROM vendors WHERE phone = $1', [phone]);
+      if (existingPhone.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Conflict',
+          message: 'This phone number is already registered with another account'
+        });
+      }
+    }
+
     // Hash password
     const saltRounds = 12;
     const passwordHash = await bcrypt.hash(password, saltRounds);
@@ -357,6 +368,17 @@ router.post('/register/couple', registerValidation, async (req, res) => {
         error: 'Conflict',
         message: 'User with this email already exists'
       });
+    }
+
+    // Check if phone number is already taken (if provided)
+    if (phone) {
+      const existingPhone = await query('SELECT id FROM couples WHERE phone = $1', [phone]);
+      if (existingPhone.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Conflict',
+          message: 'This phone number is already registered with another account'
+        });
+      }
     }
 
     // Hash password
@@ -766,6 +788,24 @@ router.put('/profile', authenticateToken, async (req, res) => {
 
       // Update user email
       await query('UPDATE users SET email = $1 WHERE id = $2', [email, userId]);
+    }
+
+    // Validate phone number if provided
+    if (phone) {
+      // Check if phone number is already taken by another user
+      const existingPhone = await query(`
+        SELECT u.id FROM users u 
+        LEFT JOIN couples c ON u.id = c.user_id 
+        LEFT JOIN vendors v ON u.id = v.user_id 
+        WHERE (c.phone = $1 OR v.phone = $1) AND u.id != $2
+      `, [phone, userId]);
+      
+      if (existingPhone.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Conflict',
+          message: 'This phone number is already registered with another account'
+        });
+      }
     }
 
     // Update couple profile if user is a couple

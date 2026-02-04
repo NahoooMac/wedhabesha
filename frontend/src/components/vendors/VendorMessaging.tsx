@@ -138,7 +138,7 @@ export const VendorMessaging: React.FC<VendorMessagingProps> = ({ vendorId, user
 
     const unsubscribeConnection = realtimeHandler.onConnectionChange((connected: boolean) => {
       if (!connected) {
-        console.log('Real-time connection lost, will attempt to reconnect...');
+        // Real-time connection lost, will attempt to reconnect
       } else {
         if (selectedThreadData) {
           realtimeHandler.joinThread(selectedThreadData.id);

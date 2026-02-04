@@ -390,8 +390,44 @@ const AddressTab = ({ editing, register, vendor }: any) => {
   );
 };
 
-const ServicesTab = ({ editing, register, control, vendor }: any) => {
-  const { fields, append, remove } = useFieldArray({ control, name: 'service_packages' });
+const ServicesTab = ({ editing, register, control, vendor, watch, setValue }: any) => {
+  const { fields, append, remove, watch, setValue } = useFieldArray({ control, name: 'service_packages' });
+  const [uploadingImages, setUploadingImages] = useState<{[key: number]: boolean}>({});
+  const [imageInputTypes, setImageInputTypes] = useState<{[key: number]: 'url' | 'upload'}>({});
+  const watchedPackages = watch('service_packages');
+
+  const handleImageUpload = async (index: number, file: File) => {
+    setUploadingImages(prev => ({ ...prev, [index]: true }));
+    
+    try {
+      const formData = new FormData();
+      formData.append('photos', file);
+      
+      const response = await fetch('/api/vendors/upload-photos', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+      
+      const result = await response.json();
+      const imageUrl = result.photos[0];
+      
+      // Update the form field with the uploaded image URL
+      setValue(`service_packages.${index}.photo`, imageUrl);
+      
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      alert('Failed to upload image. Please try again.');
+    } finally {
+      setUploadingImages(prev => ({ ...prev, [index]: false }));
+    }
+  };
 
   if (!editing && (!vendor?.service_packages || vendor.service_packages.length === 0)) {
     return <EmptyState icon={Package} message="No service packages listed yet." />;
@@ -480,7 +516,84 @@ const ServicesTab = ({ editing, register, control, vendor }: any) => {
                 <InputField label="Contact Phone" name={`service_packages.${index}.phone`} register={register} placeholder="+251..." />
               </div>
               
-              <InputField label="Package Photo URL" name={`service_packages.${index}.photo`} register={register} placeholder="https://..." />
+              {/* Package Image Section */}
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Package Image</label>
+                
+                {/* Image Input Type Toggle */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setImageInputTypes(prev => ({ ...prev, [index]: 'url' }))}
+                    className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                      (imageInputTypes[index] || 'url') === 'url'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                    }`}
+                  >
+                    Link URL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImageInputTypes(prev => ({ ...prev, [index]: 'upload' }))}
+                    className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                      imageInputTypes[index] === 'upload'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                    }`}
+                  >
+                    Upload File
+                  </button>
+                </div>
+
+                {/* URL Input */}
+                {(imageInputTypes[index] || 'url') === 'url' && (
+                  <InputField 
+                    label="" 
+                    name={`service_packages.${index}.photo`} 
+                    register={register} 
+                    placeholder="https://example.com/image.jpg" 
+                  />
+                )}
+
+                {/* File Upload */}
+                {imageInputTypes[index] === 'upload' && (
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleImageUpload(index, file);
+                        }
+                      }}
+                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-rose-500 outline-none transition-all file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100"
+                      disabled={uploadingImages[index]}
+                    />
+                    {uploadingImages[index] && (
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <div className="w-4 h-4 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
+                        Uploading image...
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Image Preview */}
+                {watchedPackages?.[index]?.photo && (
+                  <div className="mt-2">
+                    <img 
+                      src={watchedPackages[index].photo} 
+                      alt="Package preview"
+                      className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -595,7 +708,7 @@ const VendorProfile: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'contact' | 'address' | 'services' | 'photos' | 'hours'>('basic');
 
-  const { register, handleSubmit, formState: { errors }, reset, control } = useForm<VendorProfileFormData>({
+  const { register, handleSubmit, formState: { errors }, reset, control, watch, setValue } = useForm<VendorProfileFormData>({
     defaultValues: { service_packages: [], business_hours: [] }
   });
 
@@ -819,7 +932,7 @@ const VendorProfile: React.FC = () => {
                 {activeTab === 'basic' && <BasicInfoTab editing={editing} register={register} errors={errors} categories={categories} vendor={vendor} />}
                 {activeTab === 'contact' && <ContactTab editing={editing} register={register} vendor={vendor} />}
                 {activeTab === 'address' && <AddressTab editing={editing} register={register} vendor={vendor} />}
-                {activeTab === 'services' && <ServicesTab editing={editing} register={register} control={control} vendor={vendor} />}
+                {activeTab === 'services' && <ServicesTab editing={editing} register={register} control={control} vendor={vendor} watch={watch} setValue={setValue} />}
                 {activeTab === 'photos' && <PhotosTab editing={editing} register={register} vendor={vendor} />}
                 {activeTab === 'hours' && <HoursTab editing={editing} register={register} vendor={vendor} />}
               </div>
