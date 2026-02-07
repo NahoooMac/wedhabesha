@@ -809,7 +809,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
     }
 
     // Update couple profile if user is a couple
-    if (req.user.userType === 'COUPLE') {
+    if (req.user.user_type === 'COUPLE') {
       const updateFields = [];
       const updateValues = [];
       let paramIndex = 1;

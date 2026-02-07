@@ -76,12 +76,10 @@ const GuestForm: React.FC<GuestFormProps> = ({ weddingId, guest, onClose, onSucc
     }
 
     if (formData.phone.trim()) {
-      const phoneRegex = /^[\+]?[1-9][\d\s\-\(\)]{7,15}$/;
-      const cleanedPhone = formData.phone.replace(/[\s\-\(\)]/g, '');
-      if (!phoneRegex.test(cleanedPhone)) {
+      // Match backend validation: allow +, digits, spaces, dashes, parentheses (7-20 chars)
+      const phoneRegex = /^[\+]?[\d\s\-\(\)]{7,20}$/;
+      if (!phoneRegex.test(formData.phone.trim())) {
         newErrors.phone = 'Invalid phone number format';
-      } else if (formData.phone.length > 20) {
-        newErrors.phone = 'Phone number must be less than 20 characters';
       }
     }
 
@@ -116,20 +114,8 @@ const GuestForm: React.FC<GuestFormProps> = ({ weddingId, guest, onClose, onSucc
     };
 
     if (isEditing) {
-      // Only send changed fields for updates
-      const changes: GuestUpdateRequest = {};
-      if (submitData.name !== guest.name) changes.name = submitData.name;
-      if (submitData.email !== guest.email) changes.email = submitData.email;
-      if (submitData.phone !== guest.phone) changes.phone = submitData.phone;
-      if (submitData.table_number !== guest.table_number) changes.table_number = submitData.table_number;
-      if (submitData.dietary_restrictions !== guest.dietary_restrictions) changes.dietary_restrictions = submitData.dietary_restrictions;
-
-      if (Object.keys(changes).length === 0) {
-        onClose();
-        return;
-      }
-
-      updateGuestMutation.mutate(changes);
+      // Send all fields for updates (backend validation requires all fields)
+      updateGuestMutation.mutate(submitData);
     } else {
       createGuestMutation.mutate(submitData);
     }

@@ -64,7 +64,7 @@ const ProfileSettings: React.FC = () => {
   // Profile update mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data: ProfileData) => {
-      const response = await fetch('/api/v1/profile', {
+      const response = await fetch('/api/v1/auth/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

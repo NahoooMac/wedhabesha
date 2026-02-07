@@ -95,7 +95,8 @@ router.get('/wedding/:weddingId', authenticateToken, async (req, res) => {
     // Get guests
     const guestsResult = await query(`
       SELECT id, name, email, phone, qr_code, table_number, dietary_restrictions,
-             is_checked_in, checked_in_at, created_at
+             is_checked_in, checked_in_at, created_at,
+             rsvp_status, rsvp_message, rsvp_responded_at, unique_code
       FROM guests 
       WHERE wedding_id = ?
       ORDER BY name ASC
@@ -165,7 +166,8 @@ router.post('/wedding/:weddingId', authenticateToken, requireRole('COUPLE'), gue
       INSERT INTO guests (wedding_id, name, email, phone, qr_code, table_number, dietary_restrictions)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       RETURNING id, name, email, phone, qr_code, table_number, dietary_restrictions, 
-                is_checked_in, checked_in_at, created_at
+                is_checked_in, checked_in_at, created_at,
+                rsvp_status, rsvp_message, rsvp_responded_at, unique_code
     `, [weddingId, name, email, phone, qrCode, table_number, dietary_restrictions]);
 
     const guest = guestResult.rows[0];
@@ -255,7 +257,8 @@ router.put('/:id', authenticateToken, requireRole('COUPLE'), guestValidation, as
     // Get the updated guest data
     const updatedGuest = await query(`
       SELECT id, name, email, phone, qr_code, table_number, dietary_restrictions, 
-             is_checked_in, checked_in_at, created_at
+             is_checked_in, checked_in_at, created_at,
+             rsvp_status, rsvp_message, rsvp_responded_at, unique_code
       FROM guests 
       WHERE id = ?
     `, [guestId]);
@@ -588,7 +591,8 @@ router.post('/wedding/:weddingId/bulk-import-csv', authenticateToken, requireRol
           INSERT INTO guests (wedding_id, name, email, phone, qr_code, table_number, dietary_restrictions)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           RETURNING id, name, email, phone, qr_code, table_number, dietary_restrictions, 
-                    is_checked_in, checked_in_at, created_at
+                    is_checked_in, checked_in_at, created_at,
+                    rsvp_status, rsvp_message, rsvp_responded_at, unique_code
         `, [weddingId, guestData.name, guestData.email, guestData.phone, qrCode, guestData.table_number, guestData.dietary_restrictions]);
 
         console.log('Successfully imported guest:', guestData.name, 'with ID:', guestResult.rows[0].id);

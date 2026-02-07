@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   X, Check, ChevronLeft, ChevronRight, Download, CalendarCheck, 
-  ImageIcon, Move, Save
+  ImageIcon, Move, Save, Edit3, Eye
 } from 'lucide-react';
 import { InvitationEngine, RSVPInvitationData, TEMPLATE_METADATA } from './InvitationEngine';
 import { weddingApi } from '../../lib/api';
@@ -20,6 +20,7 @@ const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
   isOpen, onClose, templateId, weddingId, initialData, onSave
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
+  const [isMobilePreviewOpen, setIsMobilePreviewOpen] = useState(false);
   const [formData, setFormData] = useState<RSVPInvitationData>(initialData || {
     bride: "Alice",
     groom: "Bob",
@@ -228,20 +229,63 @@ const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-50 shadow-sm h-16 shrink-0">
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
-          <span className="font-bold text-gray-700">Customizing: {activeTemplate?.name}</span>
+      <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4 flex flex-col md:flex-row justify-between items-center z-50 shadow-sm shrink-0 gap-3 md:gap-0">
+        {/* Top Row on Mobile: Close Button + Edit/Preview Toggle */}
+        <div className="w-full md:w-auto flex justify-between items-center md:justify-start">
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+            <span className="font-bold text-gray-700 text-sm md:text-base hidden sm:block">
+              Customizing: {activeTemplate?.name}
+            </span>
+          </div>
+          
+          {/* Edit/Preview Toggle - Prominent on Mobile */}
+          <div className="flex bg-gray-100 rounded-lg p-1 md:hidden">
+            <button 
+              onClick={() => setIsMobilePreviewOpen(false)} 
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${!isMobilePreviewOpen ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Edit3 className="w-3.5 h-3.5 inline-block mr-1" />
+              Edit
+            </button>
+            <button 
+              onClick={() => setIsMobilePreviewOpen(true)} 
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${isMobilePreviewOpen ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Eye className="w-3.5 h-3.5 inline-block mr-1" />
+              Preview
+            </button>
+          </div>
         </div>
-        <div className="flex gap-3">
-             <button className="text-xs font-bold text-gray-500 uppercase tracking-wider px-4 py-2 hover:bg-gray-100 rounded-full transition-colors" onClick={onClose}>Cancel</button>
-             <button onClick={() => onSave && onSave(formData)} className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-full text-xs font-bold tracking-wider shadow-lg hover:shadow-xl transition-all">Save Design</button>
+
+        {/* Center: Template Name (Hidden on Mobile) */}
+        <div className="hidden md:block text-sm font-medium text-gray-500">
+          Customizing: <span className="text-rose-600 font-bold ml-1">{activeTemplate?.name}</span>
+        </div>
+        
+        {/* Right: Action Buttons */}
+        <div className="w-full md:w-auto flex gap-2 md:gap-3">
+             <button 
+               className="text-xs font-bold text-gray-500 uppercase tracking-wider px-4 py-2 hover:bg-gray-100 rounded-full transition-colors hidden sm:block" 
+               onClick={onClose}
+             >
+               Cancel
+             </button>
+             <button 
+               onClick={() => onSave && onSave(formData)} 
+               className="flex-1 md:flex-none bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-full text-xs font-bold tracking-wider shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
+             >
+               <Save className="w-3.5 h-3.5 inline-block mr-1.5" />
+               Save Design
+             </button>
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* LEFT PANEL: Wizard Form */}
-        <aside className="w-full max-w-[480px] bg-white border-r border-gray-200 flex flex-col z-20 shadow-2xl">
+        <aside className={`w-full md:w-[480px] bg-white border-r border-gray-200 flex flex-col z-20 shadow-2xl md:shadow-none absolute inset-0 md:relative transition-transform duration-300 ease-in-out ${isMobilePreviewOpen ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
           {/* Step Indicator */}
           <div className="px-8 pt-8 pb-6">
             <div className="flex items-center justify-between relative">
@@ -266,7 +310,7 @@ const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 px-8 overflow-y-auto">
+          <div className="flex-1 px-6 md:px-8 overflow-y-auto pb-24 md:pb-0">
             {currentStep === 2 && (
               <div className="animate-fadeIn">
                 <h3 className="text-2xl font-bold text-gray-900 mb-6 font-serif">The Happy Couple</h3>
@@ -407,21 +451,25 @@ const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
             )}
           </div>
 
-          <div className="p-6 border-t border-gray-100 bg-white flex justify-between items-center">
-             <button onClick={prevStep} disabled={currentStep === 1} className={`flex items-center gap-2 text-sm font-bold px-6 py-3 rounded-full transition-colors ${currentStep === 1 ? 'text-gray-300' : 'text-gray-600 hover:bg-gray-100'}`}><ChevronLeft className="w-4 h-4" /> Back</button>
+          <div className="p-4 md:p-6 border-t border-gray-100 bg-white flex justify-between items-center absolute bottom-0 w-full md:relative z-20">
+             <button onClick={prevStep} disabled={currentStep === 1} className={`flex items-center gap-2 text-sm font-bold px-4 md:px-6 py-3 rounded-full transition-colors ${currentStep === 1 ? 'text-gray-300' : 'text-gray-600 hover:bg-gray-100'}`}>
+               <ChevronLeft className="w-4 h-4" /> Back
+             </button>
              {currentStep < totalSteps && (
-               <button onClick={nextStep} className="flex items-center gap-2 bg-rose-600 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg hover:bg-rose-700 transition-all">Next Step <ChevronRight className="w-4 h-4" /></button>
+               <button onClick={nextStep} className="flex items-center gap-2 bg-rose-600 text-white px-6 md:px-8 py-3 rounded-full text-sm font-bold shadow-lg hover:bg-rose-700 transition-all">
+                 Next Step <ChevronRight className="w-4 h-4" />
+               </button>
              )}
           </div>
         </aside>
 
         {/* RIGHT PANEL: Live Preview */}
-        <section className="flex-1 bg-gray-100/50 relative flex items-center justify-center p-8 overflow-y-auto">
-          <div className="flex flex-col items-center justify-center w-full h-full">
+        <section className={`flex-1 bg-gray-100/50 relative flex items-center justify-center p-4 md:p-8 lg:p-12 overflow-y-auto absolute inset-0 md:relative transition-transform duration-300 ease-in-out ${isMobilePreviewOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+          <div className="flex flex-col items-center justify-center w-full h-full pb-24 md:pb-0">
             <div 
                ref={invitationRef}
                data-invitation-preview
-               className="relative w-full max-w-[400px] bg-white shadow-2xl shadow-slate-400/20 rounded-sm overflow-hidden" 
+               className="relative w-full min-w-[280px] max-w-[85vw] sm:max-w-[360px] md:max-w-[400px] lg:max-w-[450px] xl:max-w-[500px] bg-white shadow-2xl shadow-slate-400/20 rounded-sm overflow-hidden transition-all duration-300" 
                style={{ aspectRatio: activeTemplate?.aspectRatio || '5/7', containerType: 'size' }}
             >
               <InvitationEngine 
@@ -430,6 +478,7 @@ const TemplateCustomizerModal: React.FC<TemplateCustomizerModalProps> = ({
                 onUpdateImageSettings={activeTemplate?.isPhotoTemplate ? handleUpdateImageSettings : undefined}
               />
             </div>
+            <p className="mt-4 md:mt-6 text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] animate-pulse">Live Preview</p>
           </div>
         </section>
       </main>

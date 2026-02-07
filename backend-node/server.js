@@ -19,6 +19,7 @@ const staffRoutes = require('./routes/staff');
 const adminRoutes = require('./routes/admin');
 const invitationRoutes = require('./routes/invitations');
 const rsvpRoutes = require('./routes/rsvp');
+const googleContactsRoutes = require('./routes/googleContacts');
 const websocketServer = require('./services/websocketServer');
 const { initializeDatabase } = require('./config/database');
 
@@ -104,6 +105,7 @@ app.use('/api/staff', staffRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/rsvp', rsvpRoutes);
+app.use('/api/google', googleContactsRoutes);
 
 // Messaging routes - UNIFIED API STRUCTURE
 const messagingRoutes = require('./routes/messaging-unified');

@@ -11,7 +11,7 @@ class SMSService {
     
     // Test phone numbers that bypass SMS API
     this.testPhoneNumbers = [
-      '+251901959439',
+      // '+251901959439',  // Removed - will send real SMS
       '+251937105764',
       '+251911234567',
       '+251912345678',
@@ -173,7 +173,7 @@ class SMSService {
       
       return {
         success: true,
-        messageId: response.data.messageId || response.data.id,
+        messageId: response.data.response?.message_id || response.data.messageId || response.data.id,
         phone: formattedPhone,
         status: 'sent',
         response: response.data

@@ -32,20 +32,10 @@ import {
   Move,
   ZoomIn
 } from 'lucide-react';
-import { MemoryRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { MemoryRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
-// --- 1. MOCK AUTH HOOK ---
-const useAuth = () => {
-  const [user, setUser] = useState<{email: string, user_type: string} | null>(null);
-  
-  const logout = async () => {
-    setUser(null);
-  };
-
-  return { user, logout };
-};
-
-// --- 2. CUSTOM FONT STYLES ---
+// --- 1. CUSTOM FONT STYLES ---
 const FontStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Ethiopic:wght@400;700;900&display=swap');
@@ -63,7 +53,7 @@ const FontStyles = () => (
   `}</style>
 );
 
-// --- 3. DATA & HELPERS ---
+// --- 2. DATA & HELPERS ---
 const translations = {
   en: {
     nav: { vendors: "Vendors", tools: "Planning Tools", templates: "Templates", pricing: "Pricing", login: "Log In", getStarted: "Get Started" },
@@ -107,7 +97,7 @@ const PaperOverlay = () => (
   <div className="absolute inset-0 z-20 paper-texture mix-blend-multiply opacity-60 pointer-events-none rounded-sm"></div>
 );
 
-// --- 4. BASE UI COMPONENTS ---
+// --- 3. BASE UI COMPONENTS ---
 const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost', size?: 'sm' | 'default' | 'lg' | 'icon' }> = ({ 
   className = "", variant = "default", size = "default", ...props 
 }) => {
@@ -162,7 +152,7 @@ const StepIndicator = ({ currentStep, totalSteps }: any) => (
   </div>
 );
 
-// --- 5. TEMPLATE COMPONENTS ---
+// --- 4. TEMPLATE COMPONENTS ---
 
 // Traditional Habesha II (Design 13) - UPDATED
 const TraditionalHabeshaTwoTemplate = ({ data, onUpdateImageSettings }: { data: typeof DEFAULT_DATA, onUpdateImageSettings?: (settings: any) => void }) => {
@@ -474,20 +464,35 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, user, logout }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const navigate = useNavigate();
   const t = translations[lang];
 
   useEffect(() => {
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     setIsDarkMode(savedDarkMode);
-    if (savedDarkMode) document.documentElement.classList.add('dark');
+    if (savedDarkMode) {
+      document.documentElement.classList.add('dark');
+    }
   }, []);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const toggleLang = () => {
+    setLang(lang === 'en' ? 'am' : 'en');
+  };
 
   const toggleDarkMode = () => {
     const newDarkMode = !isDarkMode;
     setIsDarkMode(newDarkMode);
+    
     if (newDarkMode) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('darkMode', 'true');
@@ -497,11 +502,37 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, user, logout }
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  const getDashboardLink = () => {
+    if (!user) return '/';
+    
+    switch (user.user_type) {
+      case 'COUPLE':
+        return '/dashboard';
+      case 'VENDOR':
+        return '/Vendor/dashboard';
+      case 'ADMIN':
+        return '/admin/dashboard';
+      default:
+        return '/';
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col font-sans text-gray-900 bg-white dark:bg-gray-950 dark:text-white transition-colors duration-300 selection:bg-rose-100 selection:text-rose-900 overflow-x-hidden">
       <FontStyles />
-      <nav className={`fixed w-full z-50 transition-all duration-300 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800`}>
+      {/* Navigation */}
+      <nav className={`fixed w-full z-50 transition-all duration-300 ${scrolled ? 'bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800 shadow-sm' : 'bg-transparent border-transparent'}`}>
          <div className="container mx-auto px-4 h-20 flex items-center justify-between">
+            {/* Logo */}
             <Link to="/" className="flex items-center gap-2 group cursor-pointer">
               <div className="w-9 h-9 bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform duration-300">
                 <Heart className="w-5 h-5 text-white fill-current" />
@@ -511,34 +542,112 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, user, logout }
               </span>
             </Link>
 
+            {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-8 font-semibold text-sm">
-               <Link to="/vendors" className="text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors">{t.nav.vendors}</Link>
-               <Link to="/templates" className="text-rose-600 dark:text-rose-400 font-bold transition-colors">{t.nav.templates}</Link>
-               {user && <Link to="/dashboard" className="text-gray-600 dark:text-gray-300 hover:text-rose-600 transition-colors">{t.nav.tools}</Link>}
-               <Link to="/pricing" className="text-gray-600 dark:text-gray-300 hover:text-rose-600 transition-colors">{t.nav.pricing}</Link>
+               <Link to="/vendors" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                   {t.nav.vendors}
+                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+               </Link>
+               
+               <Link to="/templates" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                   Templates
+                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+               </Link>
+               
+               <Link to="/pricing" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                   {t.nav.pricing}
+                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+               </Link>
+               
+               {user && (
+                 <Link to={getDashboardLink()} className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                     {t.nav.tools}
+                     <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+                 </Link>
+               )}
+               
+               <a href="#testimonials" className="relative text-gray-600 dark:text-gray-300 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group py-2">
+                   Real Weddings
+                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-rose-500 transition-all duration-300 group-hover:w-full"></span>
+               </a>
             </div>
 
+            {/* Auth Buttons & Lang Toggle */}
             <div className="hidden md:flex items-center gap-3">
-              <button onClick={() => setLang(lang === 'en' ? 'am' : 'en')} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 flex items-center gap-2 font-medium">
-                <Globe className="w-4 h-4" /> <span>{lang === 'en' ? 'EN' : 'አማ'}</span>
+              <button 
+                onClick={toggleLang}
+                className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 flex items-center gap-2 font-medium"
+              >
+                <Globe className="w-4 h-4" />
+                <span>{lang === 'en' ? 'አማ' : 'EN'}</span>
               </button>
-              <button onClick={toggleDarkMode} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
+              
+              <button 
+                onClick={toggleDarkMode}
+                className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Toggle dark mode"
+              >
                 {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
+              
               <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+
               {user ? (
-                <button className="flex items-center space-x-3 pl-3 pr-2 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                  <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-full flex items-center justify-center shadow-md"><User className="h-4 w-4 text-white" /></div>
-                  <span className="text-xs font-bold mr-2">{user.email?.split('@')[0]}</span>
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center space-x-3 pl-3 pr-2 py-1.5 rounded-full transition-all duration-200 hover:scale-105 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white hover:border-rose-200"
+                  >
+                    <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-full flex items-center justify-center shadow-md">
+                      <User className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="text-left hidden xl:block mr-2">
+                      <p className="text-xs font-bold">{user.email?.split('@')[0]}</p>
+                    </div>
+                  </button>
+                  
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-3 w-60 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl py-2 z-50 border border-gray-100 dark:border-gray-800 animate-in slide-in-from-top-2">
+                      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{user.email}</p>
+                        <p className="text-xs text-gray-500 capitalize">{user.user_type?.toLowerCase()}</p>
+                      </div>
+                      <Link
+                        to={getDashboardLink()}
+                        className="flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <User className="h-4 w-4 mr-3 text-gray-400 group-hover:text-rose-500 transition-colors" />
+                        Dashboard
+                      </Link>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center px-4 py-3 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <LogOut className="h-4 w-4 mr-3" />
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
-                  <Link to="/login" className="font-bold hover:text-rose-600 px-4 py-2">{t.nav.login}</Link>
-                  <Link to="/register" className="rounded-full px-6 py-2 bg-gray-900 text-white hover:bg-gray-800 font-bold">{t.nav.getStarted}</Link>
+                  <Link to="/login">
+                    <Button variant="ghost" size="sm" className="font-bold hover:text-rose-600">{t.nav.login}</Button>
+                  </Link>
+                  <Link to="/register">
+                    <Button size="sm" className="rounded-full px-6 bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 shadow-none border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
+                      {t.nav.getStarted}
+                    </Button>
+                  </Link>
                 </>
               )}
             </div>
-            <button className="md:hidden p-2 text-gray-600" onClick={() => setIsMenuOpen(!isMenuOpen)}>{isMenuOpen ? <X /> : <Menu />}</button>
+
+            {/* Mobile Menu Toggle */}
+            <button className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+              {isMenuOpen ? <X /> : <Menu />}
+            </button>
          </div>
 
          {/* Mobile Menu Dropdown */}
@@ -549,11 +658,15 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, user, logout }
               </Link>
               
               <Link to="/templates" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
-                  {t.nav.templates} <ChevronRight className="w-5 h-5 text-gray-400"/>
+                Templates <ChevronRight className="w-5 h-5 text-gray-400"/>
+              </Link>
+              
+              <Link to="/pricing" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+                {t.nav.pricing} <ChevronRight className="w-5 h-5 text-gray-400"/>
               </Link>
               
               {user && (
-                <Link to="/dashboard" className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+                <Link to={getDashboardLink()} className="py-3 px-4 hover:bg-rose-50 dark:hover:bg-gray-800 rounded-xl font-medium text-lg flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
                   {t.nav.tools} <ChevronRight className="w-5 h-5 text-gray-400"/>
                 </Link>
               )}
@@ -561,7 +674,7 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, user, logout }
               <div className="py-2 px-4 flex justify-between items-center">
                  <span className="text-gray-600 dark:text-gray-300">Language / ቋንቋ</span>
                  <button 
-                    onClick={() => setLang(lang === 'en' ? 'am' : 'en')}
+                    onClick={toggleLang}
                     className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center gap-2 font-bold"
                   >
                     <Globe className="w-4 h-4" />
@@ -597,7 +710,7 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang, user, logout }
                     </div>
                   </div>
                   <button
-                    onClick={logout}
+                    onClick={handleLogout}
                     className="w-full flex items-center justify-center px-4 py-3 text-red-600 bg-red-50 dark:bg-red-900/20 rounded-xl font-medium transition-colors"
                   >
                     <LogOut className="h-4 w-4 mr-2" />
@@ -802,24 +915,45 @@ const InvitationBuilder: React.FC = () => {
     <div className="fixed inset-0 bg-gray-50 flex flex-col font-sans text-slate-800 overflow-hidden z-[100]">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
       
-      <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-4 flex justify-between items-center z-50 shadow-sm h-16 shrink-0">
-        <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentStep(1)}>
-          <ChevronLeft className="w-5 h-5 text-gray-500" />
-          <span className="font-bold text-gray-700 hidden sm:block">Back to Gallery</span>
-        </div>
-        
-        <div className="flex bg-gray-100 rounded-lg p-1 md:hidden">
-          <button onClick={() => setIsMobilePreviewOpen(false)} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm ${!isMobilePreviewOpen ? 'bg-white text-black' : 'text-gray-500 hover:text-gray-700'}`}>Edit</button>
-          <button onClick={() => setIsMobilePreviewOpen(true)} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm ${isMobilePreviewOpen ? 'bg-white text-black' : 'text-gray-500 hover:text-gray-700'}`}>Preview</button>
+      <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4 flex flex-col md:flex-row justify-between items-center z-50 shadow-sm shrink-0 gap-3 md:gap-0">
+        {/* Top Row on Mobile: Back Button + Edit/Preview Toggle */}
+        <div className="w-full md:w-auto flex justify-between items-center md:justify-start">
+          <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentStep(1)}>
+            <ChevronLeft className="w-5 h-5 text-gray-500" />
+            <span className="font-bold text-gray-700 text-sm md:text-base">Back</span>
+          </div>
+          
+          {/* Edit/Preview Toggle - Prominent on Mobile */}
+          <div className="flex bg-gray-100 rounded-lg p-1 md:hidden">
+            <button 
+              onClick={() => setIsMobilePreviewOpen(false)} 
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${!isMobilePreviewOpen ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Edit3 className="w-3.5 h-3.5 inline-block mr-1" />
+              Edit
+            </button>
+            <button 
+              onClick={() => setIsMobilePreviewOpen(true)} 
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${isMobilePreviewOpen ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Eye className="w-3.5 h-3.5 inline-block mr-1" />
+              Preview
+            </button>
+          </div>
         </div>
 
+        {/* Center: Template Name (Hidden on Mobile) */}
         <div className="text-sm font-medium text-gray-500 hidden md:block">
            Customizing: <span className="text-rose-600 font-bold ml-1">{activeTemplate?.name}</span>
         </div>
         
-        <div className="flex gap-3">
+        {/* Right: Action Buttons */}
+        <div className="w-full md:w-auto flex gap-2 md:gap-3">
              <button className="text-xs font-bold text-gray-500 uppercase tracking-wider px-4 py-2 hover:bg-gray-100 rounded-full transition-colors hidden sm:block" onClick={() => setCurrentStep(1)}>Cancel</button>
-             <button onClick={handleSave} className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-full text-xs font-bold tracking-wider whitespace-nowrap shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5">Save Design</button>
+             <button onClick={handleSave} className="flex-1 md:flex-none bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded-full text-xs font-bold tracking-wider whitespace-nowrap shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5">
+               <Download className="w-3.5 h-3.5 inline-block mr-1.5" />
+               Save Design
+             </button>
         </div>
       </header>
 
@@ -912,12 +1046,12 @@ const InvitationBuilder: React.FC = () => {
           </div>
         </aside>
 
-        <section className={`flex-1 bg-gray-100/50 relative flex items-center justify-center p-4 md:p-12 overflow-y-auto absolute inset-0 md:relative transition-transform duration-300 ease-in-out ${isMobilePreviewOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+        <section className={`flex-1 bg-gray-100/50 relative flex items-center justify-center p-4 md:p-8 lg:p-12 overflow-y-auto absolute inset-0 md:relative transition-transform duration-300 ease-in-out ${isMobilePreviewOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
           <div className="flex flex-col items-center justify-center w-full h-full pb-24 md:pb-0">
-            <div className="w-full max-w-[360px] md:max-w-[500px] bg-white shadow-2xl shadow-slate-400/20 rounded-sm overflow-hidden transform transition-all duration-500 origin-center" style={{ aspectRatio: activeTemplate?.aspectRatio || '5/7', containerType: 'size' }}>
+            <div className="relative w-full min-w-[280px] max-w-[85vw] sm:max-w-[360px] md:max-w-[400px] lg:max-w-[450px] xl:max-w-[500px] bg-white shadow-2xl shadow-slate-400/20 rounded-sm overflow-hidden transition-all duration-300" style={{ aspectRatio: activeTemplate?.aspectRatio || '5/7', containerType: 'size' }}>
               <ActiveComponent data={formData} onUpdateImageSettings={activeTemplate?.isPhotoTemplate ? handleUpdateImageSettings : undefined} />
             </div>
-            <p className="mt-6 text-xs font-bold text-gray-400 uppercase tracking-[0.2em] animate-pulse">Live Preview</p>
+            <p className="mt-4 md:mt-6 text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.2em] animate-pulse">Live Preview</p>
           </div>
         </section>
       </main>

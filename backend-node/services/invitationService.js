@@ -71,12 +71,12 @@ class InvitationService {
       };
     }
     
-    // Use test phone in development mode
+    // Use test phone in development mode (DISABLED - send to actual guest phones)
     let phoneToUse = guest.phone;
-    if (process.env.NODE_ENV === 'development' && process.env.AFROMESSAGE_TEST_PHONE) {
-      console.log(`🧪 Development mode: Using test phone ${process.env.AFROMESSAGE_TEST_PHONE} instead of ${guest.phone}`);
-      phoneToUse = process.env.AFROMESSAGE_TEST_PHONE;
-    }
+    // if (process.env.NODE_ENV === 'development' && process.env.AFROMESSAGE_TEST_PHONE) {
+    //   console.log(`🧪 Development mode: Using test phone ${process.env.AFROMESSAGE_TEST_PHONE} instead of ${guest.phone}`);
+    //   phoneToUse = process.env.AFROMESSAGE_TEST_PHONE;
+    // }
     
     // Parse customization to get wedding details
     let customization = {};
@@ -90,7 +90,7 @@ class InvitationService {
       }
     }
     
-    // Build simple SMS with ASCII characters only
+    // Build SMS message (supports Amharic and other Unicode characters)
     let message = "You're invited";
     
     // Add wedding title if available (ASCII only)
