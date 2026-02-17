@@ -17,7 +17,10 @@ export default defineConfig({
     allowedHosts: [
       'localhost',
       '127.0.0.1',
-      '192.168.1.100'
+      '192.168.1.100',
+      '.railway.app',
+      '.vercel.app',
+      'frontend-production-8b3e.up.railway.app'
     ],
     proxy: {
       '/api': {
