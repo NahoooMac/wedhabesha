@@ -6,6 +6,7 @@ import CameraModal from './CameraModal';
 interface QRScannerProps {
   weddingId: number;
   onCheckInSuccess: (guestName: string, isDuplicate?: boolean) => void;
+  onCheckInError?: (errorMessage: string) => void;
 }
 
 interface CheckInResponse {
@@ -16,7 +17,7 @@ interface CheckInResponse {
   is_duplicate: boolean;
 }
 
-const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess }) => {
+const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess, onCheckInError }) => {
   const [error, setError] = useState<string | null>(null);
   const [manualQRCode, setManualQRCode] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -59,7 +60,11 @@ const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess }) =>
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Check-in failed');
+        // Check for specific "not invited" error
+        if (errorData.message === 'Not invited to this wedding') {
+          throw new Error('Not invited to this wedding');
+        }
+        throw new Error(errorData.message || errorData.detail || 'Check-in failed');
       }
 
       const result: CheckInResponse = await response.json();
@@ -78,9 +83,16 @@ const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess }) =>
         setManualQRCode(''); // Clear manual input
       } else {
         setError(result.message || 'Check-in failed');
+        if (onCheckInError) {
+          onCheckInError(result.message || 'Check-in failed');
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Check-in failed');
+      const errorMsg = err instanceof Error ? err.message : 'Check-in failed';
+      setError(errorMsg);
+      if (onCheckInError) {
+        onCheckInError(errorMsg);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -105,12 +117,12 @@ const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess }) =>
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         <div className="text-center">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-base md:text-lg font-semibold text-gray-900 dark:text-white mb-2">
             QR Code Scanner
           </h3>
-          <p className="text-gray-600">
+          <p className="text-sm md:text-base text-gray-600 dark:text-slate-400">
             Scan guest QR codes or enter manually
           </p>
         </div>
@@ -120,20 +132,20 @@ const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess }) =>
           <div className="text-center">
             <Button
               onClick={openCameraModal}
-              className="mb-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 text-lg"
+              className="mb-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 md:px-8 py-2.5 md:py-3 text-sm md:text-lg"
               disabled={isProcessing}
             >
               📷 Open Camera Scanner
             </Button>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs md:text-sm text-gray-500 dark:text-slate-500">
               Click to open camera in a popup window for QR code scanning
             </p>
           </div>
         </div>
 
         {/* Manual QR Code Entry */}
-        <div className="border-t pt-6">
-          <h4 className="font-medium text-gray-900 mb-4">Manual QR Code Entry</h4>
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-4 md:pt-6">
+          <h4 className="font-medium text-sm md:text-base text-gray-900 dark:text-white mb-4">Manual QR Code Entry</h4>
           <form onSubmit={handleManualSubmit} className="space-y-4">
             <div>
               <input
@@ -141,31 +153,24 @@ const QRScanner: React.FC<QRScannerProps> = ({ weddingId, onCheckInSuccess }) =>
                 value={manualQRCode}
                 onChange={(e) => setManualQRCode(e.target.value)}
                 placeholder="Enter QR code manually"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 md:py-2.5 text-sm md:text-base border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 disabled={isProcessing}
               />
             </div>
             <Button
               type="submit"
               disabled={!manualQRCode.trim() || isProcessing}
-              className="w-full"
+              className="w-full text-sm md:text-base py-2 md:py-2.5"
             >
               {isProcessing ? 'Processing...' : 'Check In Guest'}
             </Button>
           </form>
         </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-3">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
-        )}
-
         {/* Instructions */}
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-          <h4 className="font-medium text-blue-900 mb-2">Instructions:</h4>
-          <ul className="text-sm text-blue-800 space-y-1">
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3 md:p-4">
+          <h4 className="font-medium text-sm md:text-base text-blue-900 dark:text-blue-200 mb-2">Instructions:</h4>
+          <ul className="text-xs md:text-sm text-blue-800 dark:text-blue-300 space-y-1">
             <li>• Point camera at guest's QR code</li>
             <li>• Ensure good lighting for best results</li>
             <li>• Use manual entry if camera scanning fails</li>

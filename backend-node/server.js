@@ -91,6 +91,20 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Health check endpoint for offline mode (supports HEAD requests)
+app.head('/api/v1/health', (req, res) => {
+  res.status(200).end();
+});
+
+app.get('/api/v1/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'wedding-platform-api',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // API Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/auth', auth2faRoutes);
@@ -110,6 +124,10 @@ app.use('/api/google', googleContactsRoutes);
 // Messaging routes - UNIFIED API STRUCTURE
 const messagingRoutes = require('./routes/messaging-unified');
 app.use('/api/v1/messaging', messagingRoutes);
+
+// Notification routes
+const notificationRoutes = require('./routes/notifications');
+app.use('/api/v1/notifications', notificationRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -169,6 +187,11 @@ const startServer = async () => {
       } else {
         console.log('📱 SMS notifications are disabled');
       }
+
+      // Start notification cleanup service
+      const notificationCleanupService = require('./services/notificationCleanupService');
+      notificationCleanupService.start();
+      console.log('🧹 Notification cleanup service started');
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

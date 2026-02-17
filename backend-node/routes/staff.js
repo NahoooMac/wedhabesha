@@ -166,11 +166,25 @@ router.get('/wedding/stats', authenticateStaff, async (req, res) => {
 
     const stats = guestStats.rows[0];
 
+    // Get recent check-ins
+    const recentCheckIns = await query(`
+      SELECT name, checked_in_at
+      FROM guests
+      WHERE wedding_id = ? AND is_checked_in = true
+      ORDER BY checked_in_at DESC
+      LIMIT 10
+    `, [weddingId]);
+
     res.json({
       total_guests: parseInt(stats.total_guests) || 0,
       checked_in_guests: parseInt(stats.checked_in_guests) || 0,
       pending_guests: (parseInt(stats.total_guests) || 0) - (parseInt(stats.checked_in_guests) || 0),
-      check_in_percentage: stats.total_guests > 0 ? Math.round((stats.checked_in_guests / stats.total_guests) * 100) : 0
+      check_in_percentage: stats.total_guests > 0 ? Math.round((stats.checked_in_guests / stats.total_guests) * 100) : 0,
+      recent_checkins: recentCheckIns.rows.map(row => ({
+        guest_name: row.name,
+        checked_in_at: row.checked_in_at,
+        method: 'Manual' // Default for now, can be enhanced later
+      }))
     });
 
   } catch (error) {

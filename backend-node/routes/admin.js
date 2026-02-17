@@ -265,7 +265,7 @@ router.get('/vendor-applications', authenticateToken, requireRole('ADMIN'), asyn
 router.post('/vendor-applications/:id/approve', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const applicationId = parseInt(req.params.id);
-    const { notes } = req.body;
+    const { notes, admin_message } = req.body;
 
     // Get vendor ID from application
     const appResult = await query(`
@@ -302,8 +302,10 @@ router.post('/vendor-applications/:id/approve', authenticateToken, requireRole('
       WHERE id = ?
     `, [vendorId]);
 
-    // Send verification notification
-    await notificationService.sendVendorVerificationNotification(vendorId, 'verified');
+    // Send verification notification with admin message
+    await notificationService.sendVendorVerificationNotification(vendorId, 'approved', {
+      adminMessage: admin_message || 'Congratulations! Your vendor application has been approved. You are now visible to customers and can start receiving leads.'
+    });
 
     res.json(result.rows[0]);
 
@@ -320,7 +322,7 @@ router.post('/vendor-applications/:id/approve', authenticateToken, requireRole('
 router.post('/vendor-applications/:id/reject', authenticateToken, requireRole('ADMIN'), async (req, res) => {
   try {
     const applicationId = parseInt(req.params.id);
-    const { rejection_reason, notes } = req.body;
+    const { rejection_reason, additional_notes, notes } = req.body;
 
     if (!rejection_reason) {
       return res.status(400).json({
@@ -364,8 +366,11 @@ router.post('/vendor-applications/:id/reject', authenticateToken, requireRole('A
       WHERE id = ?
     `, [vendorId]);
 
-    // Send rejection notification
-    await notificationService.sendVendorVerificationNotification(vendorId, 'rejected', rejection_reason);
+    // Send rejection notification with reason and additional notes
+    await notificationService.sendVendorVerificationNotification(vendorId, 'rejected', {
+      rejectionReason: rejection_reason,
+      additionalNotes: additional_notes || null
+    });
 
     res.json(result.rows[0]);
 
@@ -508,6 +513,29 @@ router.get('/users/stats', authenticateToken, requireRole('ADMIN'), async (req, 
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to get user statistics'
+    });
+  }
+});
+
+// Get user counts for notification management
+router.get('/users/counts', authenticateToken, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const countsQuery = `
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN user_type = 'COUPLE' AND is_active = 1 THEN 1 END) as couples,
+        COUNT(CASE WHEN user_type = 'VENDOR' AND is_active = 1 THEN 1 END) as vendors
+      FROM users
+    `;
+
+    const result = await query(countsQuery);
+    res.json(result.rows[0]);
+
+  } catch (error) {
+    console.error('Get user counts error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get user counts'
     });
   }
 });
@@ -1362,6 +1390,94 @@ router.put('/profile-settings', authenticateToken, requireRole('ADMIN'), async (
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to update profile settings'
+    });
+  }
+});
+
+/**
+ * Broadcast notification to multiple users (Admin only)
+ * POST /api/admin/notifications/broadcast
+ */
+router.post('/notifications/broadcast', authenticateToken, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { recipient_type, specific_user_id, notification_type, title, message, link } = req.body;
+
+    // Validate required fields
+    if (!recipient_type || !notification_type || !title || !message) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'recipient_type, notification_type, title, and message are required'
+      });
+    }
+
+    // Validate notification type
+    const validTypes = ['announcement', 'message', 'alert', 'info'];
+    if (!validTypes.includes(notification_type)) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: `Invalid notification type. Must be one of: ${validTypes.join(', ')}`
+      });
+    }
+
+    // Get recipient user IDs based on type
+    let userIds = [];
+    
+    if (recipient_type === 'specific') {
+      if (!specific_user_id) {
+        return res.status(400).json({
+          error: 'Validation Error',
+          message: 'specific_user_id is required when recipient_type is "specific"'
+        });
+      }
+      userIds = [parseInt(specific_user_id)];
+    } else if (recipient_type === 'all') {
+      const result = await query('SELECT id FROM users WHERE is_active = 1');
+      userIds = result.rows.map(row => row.id);
+    } else if (recipient_type === 'couples') {
+      const result = await query('SELECT id FROM users WHERE user_type = ? AND is_active = 1', ['COUPLE']);
+      userIds = result.rows.map(row => row.id);
+    } else if (recipient_type === 'vendors') {
+      const result = await query('SELECT id FROM users WHERE user_type = ? AND is_active = 1', ['VENDOR']);
+      userIds = result.rows.map(row => row.id);
+    } else {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Invalid recipient_type. Must be one of: all, couples, vendors, specific'
+      });
+    }
+
+    // Insert notifications for all recipients
+    const insertPromises = userIds.map(userId =>
+      query(`
+        INSERT INTO notifications (user_id, type, title, message, link, is_read)
+        VALUES (?, ?, ?, ?, ?, 0)
+      `, [userId, notification_type, title, message, link || null])
+    );
+
+    await Promise.all(insertPromises);
+
+    // Log the broadcast action
+    await query(`
+      INSERT INTO audit_logs (admin_user_id, action_type, target_type, target_id, action_metadata)
+      VALUES (?, 'notification_broadcast', 'notification', ?, ?)
+    `, [req.user.id, 0, JSON.stringify({ 
+      recipient_type, 
+      notification_type, 
+      title,
+      recipient_count: userIds.length 
+    })]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Notifications sent successfully',
+      recipientCount: userIds.length
+    });
+
+  } catch (error) {
+    console.error('Broadcast notification error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to broadcast notifications'
     });
   }
 });

@@ -5,6 +5,7 @@ interface StaffAuthFormProps {
   onAuthSuccess: (session: {
     sessionToken: string;
     weddingId: number;
+    weddingCode: string;
     expiresIn: number;
   }) => void;
 }
@@ -61,6 +62,7 @@ const StaffAuthForm: React.FC<StaffAuthFormProps> = ({ onAuthSuccess }) => {
       onAuthSuccess({
         sessionToken: sessionData.session_token,
         weddingId: sessionData.wedding_id,
+        weddingCode: formData.wedding_code,
         expiresIn: sessionData.expires_in
       });
     } catch (err) {

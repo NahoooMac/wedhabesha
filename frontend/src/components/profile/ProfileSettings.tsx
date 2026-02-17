@@ -18,6 +18,20 @@ interface TwoFactorStatus {
   };
 }
 
+interface UserProfile {
+  id: number;
+  email: string;
+  user_type: string;
+  auth_provider: string;
+  created_at: string;
+  couple?: {
+    id: number;
+    partner1_name: string;
+    partner2_name: string;
+    phone: string | null;
+  };
+}
+
 interface ProfileData {
   partner1_name?: string;
   partner2_name?: string;
@@ -55,35 +69,40 @@ const ProfileSettings: React.FC = () => {
   
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Get user profile data
+  const { data: userProfile } = useQuery<UserProfile>({
+    queryKey: ['user-profile'],
+    queryFn: () => apiClient.get('/api/v1/auth/me'),
+    enabled: !!user,
+  });
+
   // Get 2FA status
   const { data: twoFactorStatus, refetch: refetch2FAStatus } = useQuery<TwoFactorStatus>({
     queryKey: ['2fa-status'],
     queryFn: () => apiClient.get('/api/v1/auth/2fa/status'),
   });
 
+  // Load profile data when userProfile is fetched
+  React.useEffect(() => {
+    if (userProfile) {
+      setProfileData({
+        partner1_name: userProfile.couple?.partner1_name || '',
+        partner2_name: userProfile.couple?.partner2_name || '',
+        phone: userProfile.couple?.phone || '',
+        email: userProfile.email || user?.email || '',
+      });
+    }
+  }, [userProfile, user]);
+
   // Profile update mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data: ProfileData) => {
-      const response = await fetch('/api/v1/auth/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-        },
-        body: JSON.stringify(data),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update profile');
-      }
-      
-      return response.json();
+      return apiClient.put('/api/v1/auth/profile', data);
     },
     onSuccess: () => {
       setIsEditingProfile(false);
       setErrors({});
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
     },
     onError: (error: any) => {
       setErrors({ profile: error.message });
@@ -93,24 +112,10 @@ const ProfileSettings: React.FC = () => {
   // Password change mutation
   const changePasswordMutation = useMutation({
     mutationFn: async (data: PasswordData) => {
-      const response = await fetch('/api/v1/auth/change-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-        },
-        body: JSON.stringify({
-          current_password: data.currentPassword,
-          new_password: data.newPassword,
-        }),
+      return apiClient.post('/api/v1/auth/change-password', {
+        current_password: data.currentPassword,
+        new_password: data.newPassword,
       });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to change password');
-      }
-      
-      return response.json();
     },
     onSuccess: () => {
       setIsChangingPassword(false);
@@ -146,10 +151,10 @@ const ProfileSettings: React.FC = () => {
 
     if (user?.user_type === 'COUPLE') {
       if (!profileData.partner1_name?.trim()) {
-        newErrors.partner1_name = 'Partner 1 name is required';
+        newErrors.partner1_name = 'Bride / Partner 1 name is required';
       }
       if (!profileData.partner2_name?.trim()) {
-        newErrors.partner2_name = 'Partner 2 name is required';
+        newErrors.partner2_name = 'Groom / Partner 2 name is required';
       }
     }
 
@@ -277,7 +282,7 @@ const ProfileSettings: React.FC = () => {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Partner 1 Name
+                      Bride / Partner 1 Name
                     </label>
                     <Input
                       type="text"
@@ -290,7 +295,7 @@ const ProfileSettings: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Partner 2 Name
+                      Groom / Partner 2 Name
                     </label>
                     <Input
                       type="text"
@@ -347,6 +352,24 @@ const ProfileSettings: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Email</p>
                 <p className="text-gray-900 dark:text-white">{user?.email}</p>
               </div>
+              {user?.user_type === 'COUPLE' && userProfile?.couple && (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Bride / Partner 1 Name</p>
+                    <p className="text-gray-900 dark:text-white">{userProfile.couple.partner1_name || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Groom / Partner 2 Name</p>
+                    <p className="text-gray-900 dark:text-white">{userProfile.couple.partner2_name || 'Not set'}</p>
+                  </div>
+                  {userProfile.couple.phone && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Phone Number</p>
+                      <p className="text-gray-900 dark:text-white">{userProfile.couple.phone}</p>
+                    </div>
+                  )}
+                </>
+              )}
               <div>
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Account Type</p>
                 <p className="text-gray-900 dark:text-white">{user?.user_type}</p>

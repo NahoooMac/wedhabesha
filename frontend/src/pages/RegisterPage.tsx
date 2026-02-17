@@ -16,7 +16,9 @@ const RegisterPage: React.FC = () => {
   }, [userType]);
 
   const handleRegisterSuccess = () => {
-    navigate('/dashboard', { replace: true });
+    // Redirect to appropriate dashboard based on user type
+    const dashboardRoute = isVendorSignup ? '/vendor/dashboard' : '/dashboard';
+    navigate(dashboardRoute, { replace: true });
   };
 
   return (

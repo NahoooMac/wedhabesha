@@ -3,6 +3,7 @@ import { Users, UserCheck, Clock, TrendingUp } from 'lucide-react';
 
 interface CheckInStatsProps {
   weddingId: number;
+  refreshTrigger?: number;
 }
 
 interface CheckInStatsData {
@@ -17,7 +18,7 @@ interface CheckInStatsData {
   }>;
 }
 
-const CheckInStats: React.FC<CheckInStatsProps> = ({ weddingId }) => {
+const CheckInStats: React.FC<CheckInStatsProps> = ({ weddingId, refreshTrigger }) => {
   const [stats, setStats] = useState<CheckInStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,18 +61,25 @@ const CheckInStats: React.FC<CheckInStatsProps> = ({ weddingId }) => {
   useEffect(() => {
     fetchStats();
     
-    // Refresh stats every 30 seconds
-    const interval = setInterval(fetchStats, 30000);
+    // Refresh stats every 10 seconds for real-time updates
+    const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
   }, [weddingId]);
 
+  // Refresh when triggered by check-in
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      fetchStats();
+    }
+  }, [refreshTrigger]);
+
   if (isLoading) {
     return (
-      <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
         <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-slate-200 rounded w-1/2"></div>
-          <div className="h-8 bg-slate-200 rounded w-3/4"></div>
-          <div className="h-4 bg-slate-200 rounded w-1/3"></div>
+          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div>
         </div>
       </div>
     );
@@ -79,13 +87,13 @@ const CheckInStats: React.FC<CheckInStatsProps> = ({ weddingId }) => {
 
   if (error) {
     return (
-      <div className="bg-white p-6 rounded-xl border border-red-200 shadow-sm">
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-red-200 dark:border-red-800 shadow-sm">
         <div className="text-center">
-          <p className="text-red-600 font-medium">Failed to load stats</p>
-          <p className="text-sm text-slate-500 mt-1">{error}</p>
+          <p className="text-red-600 dark:text-red-400 font-medium">Failed to load stats</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{error}</p>
           <button 
             onClick={fetchStats}
-            className="mt-3 text-sm text-rose-600 hover:text-rose-700 font-medium"
+            className="mt-3 text-sm text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-medium"
           >
             Try Again
           </button>
@@ -126,39 +134,39 @@ const CheckInStats: React.FC<CheckInStatsProps> = ({ weddingId }) => {
   ];
 
   const colorStyles = {
-    blue: 'text-blue-600 bg-blue-50',
-    green: 'text-green-600 bg-green-50',
-    orange: 'text-orange-600 bg-orange-50',
-    rose: 'text-rose-600 bg-rose-50'
+    blue: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20',
+    green: 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20',
+    orange: 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20',
+    rose: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20'
   };
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-bold text-slate-800">Live Stats</h3>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-white">Live Stats</h3>
       
       <div className="grid grid-cols-2 gap-3">
         {statItems.map((item, index) => (
-          <div key={index} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+          <div key={index} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <div className={`p-2 rounded-lg ${colorStyles[item.color as keyof typeof colorStyles]}`}>
                 <item.icon size={16} />
               </div>
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-800">{item.value}</p>
-              <p className="text-xs text-slate-500 font-medium">{item.label}</p>
+              <p className="text-2xl font-bold text-slate-800 dark:text-white">{item.value}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{item.label}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Progress Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-slate-700">Progress</span>
-          <span className="text-sm font-bold text-slate-800">{stats.checkin_rate}%</span>
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Progress</span>
+          <span className="text-sm font-bold text-slate-800 dark:text-white">{stats.checkin_rate}%</span>
         </div>
-        <div className="w-full bg-slate-200 rounded-full h-2">
+        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
           <div 
             className="bg-gradient-to-r from-rose-500 to-pink-600 h-2 rounded-full transition-all duration-500"
             style={{ width: `${Math.min(stats.checkin_rate, 100)}%` }}

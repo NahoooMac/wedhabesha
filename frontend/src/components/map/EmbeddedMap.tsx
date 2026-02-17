@@ -15,6 +15,8 @@ L.Icon.Default.mergeOptions({
 interface EmbeddedMapProps {
   venueName: string;
   venueAddress?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   className?: string;
 }
 
@@ -25,7 +27,9 @@ interface Coordinates {
 
 const EmbeddedMap: React.FC<EmbeddedMapProps> = ({ 
   venueName, 
-  venueAddress, 
+  venueAddress,
+  latitude,
+  longitude,
   className = "w-full h-64" 
 }) => {
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
@@ -76,6 +80,14 @@ const EmbeddedMap: React.FC<EmbeddedMapProps> = ({
       setMapError(false);
       
       try {
+        // If latitude and longitude are provided, use them directly
+        if (latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined) {
+          setCoordinates({ lat: latitude, lng: longitude });
+          setIsLoading(false);
+          return;
+        }
+
+        // Otherwise, try to geocode the address
         const coords = await geocodeAddress(searchQuery);
         if (coords) {
           setCoordinates(coords);
@@ -93,7 +105,7 @@ const EmbeddedMap: React.FC<EmbeddedMapProps> = ({
     };
 
     loadCoordinates();
-  }, [searchQuery]);
+  }, [searchQuery, latitude, longitude]);
 
   const openInGoogleMaps = () => {
     window.open(mapLinkUrl, '_blank', 'noopener,noreferrer');

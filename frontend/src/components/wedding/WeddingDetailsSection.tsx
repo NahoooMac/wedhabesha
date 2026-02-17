@@ -12,6 +12,8 @@ interface WeddingDetailsSectionProps {
     wedding_date: string;
     venue_name: string;
     venue_address?: string;
+    venue_latitude?: number | null;
+    venue_longitude?: number | null;
     expected_guests: number;
     wedding_code?: string;
     staff_pin?: string;
@@ -281,6 +283,8 @@ const WeddingDetailsSection: React.FC<WeddingDetailsSectionProps> = ({
               <EmbeddedMap 
                 venueName={wedding.venue_name}
                 venueAddress={wedding.venue_address}
+                latitude={wedding.venue_latitude}
+                longitude={wedding.venue_longitude}
                 className="w-full h-48"
               />
             </div>

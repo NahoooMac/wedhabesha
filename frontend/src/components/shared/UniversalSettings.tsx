@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sun, Moon } from 'lucide-react';
+import TwoFactorManagement from '../auth/TwoFactorManagement';
 
 // Types
 interface UserProfile {
@@ -21,6 +22,12 @@ interface UserProfile {
   };
 }
 
+interface CoupleProfile {
+  partner1_name: string;
+  partner2_name: string;
+  phone: string;
+}
+
 interface PasswordChangeData {
   current_password: string;
   new_password: string;
@@ -37,17 +44,18 @@ interface PasswordChangeData {
 // }
 
 interface UniversalSettingsProps {
-  userType: 'USER' | 'VENDOR' | 'ADMIN' | 'STAFF';
+  userType: 'USER' | 'COUPLE' | 'VENDOR' | 'ADMIN' | 'STAFF';
   darkMode: boolean;
   setDarkMode: (value: boolean) => void;
 }
 
 // API Functions
 const fetchUserProfile = async (userType: string): Promise<UserProfile> => {
+  // For USER/COUPLE types, use the auth/me endpoint
   const endpoint = userType === 'ADMIN' ? '/api/admin/profile' : 
                    userType === 'VENDOR' ? '/api/vendor/profile' :
                    userType === 'STAFF' ? '/api/staff/profile' :
-                   '/api/user/profile';
+                   '/api/v1/auth/me';
                    
   const response = await fetch(endpoint, {
     headers: {
@@ -63,11 +71,84 @@ const fetchUserProfile = async (userType: string): Promise<UserProfile> => {
   return response.json();
 };
 
+const fetchCoupleProfile = async (): Promise<CoupleProfile> => {
+  const response = await fetch('/api/v1/auth/me', {
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('jwt_token') || localStorage.getItem('access_token')}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch couple profile');
+  }
+
+  const data = await response.json();
+  console.log('🔍 fetchCoupleProfile - Raw API response:', data);
+  
+  // Extract couple data from the response
+  if (data.couple) {
+    const partner1 = data.couple.partner1_name;
+    const partner2 = data.couple.partner2_name;
+    const phone = data.couple.phone;
+    
+    console.log('🔍 fetchCoupleProfile - Raw couple data:', {
+      partner1,
+      partner2,
+      phone
+    });
+    
+    // Check if values are placeholders and treat them as empty
+    const isPlaceholder1 = !partner1 || partner1.trim() === '' || partner1 === 'Partner 1';
+    const isPlaceholder2 = !partner2 || partner2.trim() === '' || partner2 === 'Partner 2';
+    
+    console.log('🔍 fetchCoupleProfile - Placeholder check:', {
+      isPlaceholder1,
+      isPlaceholder2
+    });
+    
+    const result = {
+      partner1_name: isPlaceholder1 ? '' : partner1,
+      partner2_name: isPlaceholder2 ? '' : partner2,
+      phone: phone || '',
+    };
+    
+    console.log('🔍 fetchCoupleProfile - Returning:', result);
+    return result;
+  }
+  
+  console.log('⚠️ fetchCoupleProfile - No couple data in response');
+  // Return empty data if no couple info exists
+  return {
+    partner1_name: '',
+    partner2_name: '',
+    phone: '',
+  };
+};
+
+const updateCoupleProfile = async (data: CoupleProfile) => {
+  const response = await fetch('/api/v1/auth/profile', {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('jwt_token') || localStorage.getItem('access_token')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to update profile');
+  }
+
+  return response.json();
+};
+
 const changePassword = async (data: PasswordChangeData, userType: string) => {
   const endpoint = userType === 'ADMIN' ? '/api/admin/change-password' : 
                    userType === 'VENDOR' ? '/api/v1/vendors/change-password' :
                    userType === 'STAFF' ? '/api/staff/change-password' :
-                   '/api/user/change-password';
+                   '/api/v1/auth/change-password';
                    
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -201,6 +282,7 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   // Password change form state
   const [passwordForm, setPasswordForm] = useState<PasswordChangeData>({
@@ -209,10 +291,69 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
     confirm_password: '',
   });
 
+  // Couple profile form state
+  const [coupleForm, setCoupleForm] = useState<CoupleProfile>({
+    partner1_name: '',
+    partner2_name: '',
+    phone: '',
+  });
+
   // Fetch user profile
-  const { data: profile, isLoading: profileLoading } = useQuery({
+  const { data: profile, isLoading: profileLoading, refetch: refetchProfile } = useQuery({
     queryKey: [`${userType.toLowerCase()}-profile`],
     queryFn: () => fetchUserProfile(userType),
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: true, // Refetch when component mounts
+  });
+
+  // Debug log for profile data
+  React.useEffect(() => {
+    if (profile) {
+      console.log('User profile loaded:', profile);
+      console.log('Couple data from profile:', (profile as any).couple);
+    }
+  }, [profile]);
+
+  // Extract couple data from profile (profile already contains couple data)
+  const coupleProfile = React.useMemo(() => {
+    if ((userType === 'USER' || userType === 'COUPLE') && profile && (profile as any).couple) {
+      const coupleData = (profile as any).couple;
+      console.log('📝 Extracting couple data from profile:', coupleData);
+      return {
+        partner1_name: coupleData.partner1_name || '',
+        partner2_name: coupleData.partner2_name || '',
+        phone: coupleData.phone || '',
+      };
+    }
+    return null;
+  }, [profile, userType]);
+
+  // Update couple form when data is loaded
+  React.useEffect(() => {
+    if (coupleProfile) {
+      console.log('📝 Updating couple form with data:', coupleProfile);
+      setCoupleForm({
+        partner1_name: coupleProfile.partner1_name || '',
+        partner2_name: coupleProfile.partner2_name || '',
+        phone: coupleProfile.phone || '',
+      });
+      console.log('📝 Couple form updated');
+    } else {
+      console.log('⚠️ coupleProfile is null/undefined');
+    }
+  }, [coupleProfile]);
+
+  // Couple profile update mutation
+  const coupleProfileMutation = useMutation({
+    mutationFn: (data: CoupleProfile) => updateCoupleProfile(data),
+    onSuccess: () => {
+      setIsEditingProfile(false);
+      refetchProfile(); // Refetch the main profile which includes couple data
+      alert('Profile updated successfully');
+    },
+    onError: (error: any) => {
+      alert(`Profile update failed: ${error.message}`);
+    },
   });
 
   // Password change mutation
@@ -266,6 +407,34 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
   };
 
   /**
+   * Handles couple profile update form submission.
+   */
+  const handleCoupleProfileUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!coupleForm.partner1_name || !coupleForm.partner2_name) {
+      alert('Both partner names are required');
+      return;
+    }
+
+    coupleProfileMutation.mutate(coupleForm);
+  };
+
+  /**
+   * Cancels profile editing and resets form.
+   */
+  const handleCancelEdit = () => {
+    if (coupleProfile) {
+      setCoupleForm({
+        partner1_name: coupleProfile.partner1_name || '',
+        partner2_name: coupleProfile.partner2_name || '',
+        phone: coupleProfile.phone || '',
+      });
+    }
+    setIsEditingProfile(false);
+  };
+
+  /**
    * Calculates password strength based on various criteria.
    */
   const getPasswordStrength = (password: string) => {
@@ -296,6 +465,16 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
   };
 
   const passwordStrength = getPasswordStrength(passwordForm.new_password);
+
+  // Debug: Log display values
+  React.useEffect(() => {
+    console.log('🎨 Display values:', {
+      coupleProfile,
+      partner1_display: coupleProfile?.partner1_name && coupleProfile.partner1_name.trim() !== '' ? coupleProfile.partner1_name : 'Not set',
+      partner2_display: coupleProfile?.partner2_name && coupleProfile.partner2_name.trim() !== '' ? coupleProfile.partner2_name : 'Not set',
+      phone_display: coupleProfile?.phone && coupleProfile.phone.trim() !== '' ? coupleProfile.phone : 'Not set'
+    });
+  }, [coupleProfile]);
 
   if (profileLoading) {
     return (
@@ -358,8 +537,115 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
           {/* Profile Settings */}
           {activeSection === 'profile' && (
             <div className="space-y-6">
+              {/* Couple-Specific Profile Fields */}
+              {(userType === 'USER' || userType === 'COUPLE') && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Couple Information</h3>
+                    {!isEditingProfile && (
+                      <button
+                        onClick={() => setIsEditingProfile(true)}
+                        className="px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 border border-indigo-300 dark:border-indigo-600 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                      >
+                        Edit Profile
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingProfile ? (
+                    <form onSubmit={handleCoupleProfileUpdate} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Bride / Partner 1 Name
+                          </label>
+                          <input
+                            type="text"
+                            value={coupleForm.partner1_name}
+                            onChange={(e) => setCoupleForm({ ...coupleForm, partner1_name: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="Enter bride / partner 1 name"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Groom / Partner 2 Name
+                          </label>
+                          <input
+                            type="text"
+                            value={coupleForm.partner2_name}
+                            onChange={(e) => setCoupleForm({ ...coupleForm, partner2_name: e.target.value })}
+                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="Enter groom / partner 2 name"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Phone Number
+                        </label>
+                        <input
+                          type="tel"
+                          value={coupleForm.phone}
+                          onChange={(e) => setCoupleForm({ ...coupleForm, phone: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          placeholder="Enter phone number"
+                        />
+                      </div>
+                      <div className="flex space-x-3">
+                        <button
+                          type="submit"
+                          disabled={coupleProfileMutation.isPending}
+                          className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {coupleProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          disabled={coupleProfileMutation.isPending}
+                          className="px-6 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Bride / Partner 1 Name
+                        </label>
+                        <div className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+                          {coupleProfile?.partner1_name && coupleProfile.partner1_name.trim() !== '' ? coupleProfile?.partner1_name : 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Groom / Partner 2 Name
+                        </label>
+                        <div className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+                          {coupleProfile?.partner2_name && coupleProfile.partner2_name.trim() !== '' ? coupleProfile.partner2_name : 'Not set'}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Phone Number
+                        </label>
+                        <div className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+                          {coupleProfile?.phone && coupleProfile.phone.trim() !== '' ? coupleProfile.phone : 'Not set'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* General Profile Information */}
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Profile Information</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Account Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -392,7 +678,11 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
                     </label>
                     <input
                       type="text"
-                      value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
+                      value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      }) : 'Unknown'}
                       disabled
                       className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white cursor-not-allowed"
                     />
@@ -519,18 +809,12 @@ const UniversalSettings: React.FC<UniversalSettingsProps> = ({ userType, darkMod
 
               {/* Security Options */}
               <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Security Options</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                    <div>
-                      <h4 className="font-medium text-slate-900 dark:text-white">Two-Factor Authentication</h4>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Add an extra layer of security to your account</p>
-                    </div>
-                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                      Enable 2FA
-                    </button>
-                  </div>
+                <TwoFactorManagement />
+              </div>
 
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-6 mt-6">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Additional Security Options</h3>
+                <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
                     <div>
                       <h4 className="font-medium text-slate-900 dark:text-white">Login Notifications</h4>

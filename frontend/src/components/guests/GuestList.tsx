@@ -25,6 +25,9 @@ const GuestList: React.FC<GuestListProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Selection State
+  const [selectedGuests, setSelectedGuests] = useState<Set<number>>(new Set());
+  
   // Feature State
   const [rsvpFilter, setRsvpFilter] = useState<'all' | 'pending' | 'accepted' | 'declined'>('all');
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
@@ -175,6 +178,48 @@ const GuestList: React.FC<GuestListProps> = ({
     }
   };
 
+  // Selection handlers
+  const handleSelectGuest = (guestId: number) => {
+    const newSelected = new Set(selectedGuests);
+    if (newSelected.has(guestId)) {
+      newSelected.delete(guestId);
+    } else {
+      newSelected.add(guestId);
+    }
+    setSelectedGuests(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedGuests.size === filteredGuests.length) {
+      setSelectedGuests(new Set());
+    } else {
+      setSelectedGuests(new Set(filteredGuests.map(g => g.id)));
+    }
+  };
+
+  const handleBulkAction = (action: 'sms' | 'delete') => {
+    const selectedGuestsList = filteredGuests.filter(g => selectedGuests.has(g.id));
+    
+    if (action === 'sms') {
+      const guestsWithPhone = selectedGuestsList.filter(g => g.phone);
+      if (guestsWithPhone.length === 0) {
+        return alert('None of the selected guests have phone numbers.');
+      }
+      if (window.confirm(`Send invitations to ${guestsWithPhone.length} selected guests via SMS?`)) {
+        sendBulkInvitationsMutation.mutate(guestsWithPhone.map(g => g.id));
+        setSelectedGuests(new Set());
+      }
+    } else if (action === 'delete') {
+      if (window.confirm(`Are you sure you want to delete ${selectedGuestsList.length} selected guests? This action cannot be undone.`)) {
+        Promise.all(selectedGuestsList.map(g => deleteGuestMutation.mutateAsync(g.id)))
+          .then(() => {
+            setSelectedGuests(new Set());
+            queryClient.invalidateQueries({ queryKey: ['guests', weddingId] });
+          });
+      }
+    }
+  };
+
   const generateQRCodeUrl = (qrCode: string) => 
     `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}`;
 
@@ -314,6 +359,8 @@ const GuestList: React.FC<GuestListProps> = ({
   const acceptedGuests = guests.filter(g => g.rsvp_status === 'accepted').length;
   const declinedGuests = guests.filter(g => g.rsvp_status === 'declined').length;
   const pendingRSVP = guests.filter(g => !g.rsvp_status || g.rsvp_status === 'pending').length;
+  const checkedInGuests = guests.filter(g => g.is_checked_in).length;
+  const notCheckedInGuests = totalGuests - checkedInGuests;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -359,12 +406,39 @@ const GuestList: React.FC<GuestListProps> = ({
                 />
               </div>
               <p className="text-lg font-medium text-slate-900 dark:text-white">{selectedGuestForQR.name}</p>
+              
+              {/* QR Code Text Display */}
+              <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">QR Code</p>
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 mb-2">
+                  <code className="text-sm font-mono text-slate-900 dark:text-slate-100 break-all">
+                    {selectedGuestForQR.qr_code}
+                  </code>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(selectedGuestForQR.qr_code);
+                      alert('QR code copied to clipboard!');
+                    } catch (error) {
+                      alert('Failed to copy QR code');
+                    }
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy to Clipboard
+                </button>
+              </div>
+
               <button
                 onClick={() => downloadQRCode(selectedGuestForQR)}
                 className="w-full bg-slate-900 dark:bg-slate-700 text-white font-medium py-2.5 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                Download
+                Download QR Image
               </button>
             </div>
           </div>
@@ -478,6 +552,16 @@ const GuestList: React.FC<GuestListProps> = ({
             </div>
             
             <select 
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as any)}
+              className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-rose-500"
+            >
+              <option value="all">All Check-in Status</option>
+              <option value="checked_in">✅ Checked In ({checkedInGuests})</option>
+              <option value="pending">⏳ Not Checked In ({notCheckedInGuests})</option>
+            </select>
+
+            <select 
               value={rsvpFilter}
               onChange={(e) => setRsvpFilter(e.target.value as any)}
               className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-rose-500"
@@ -499,6 +583,47 @@ const GuestList: React.FC<GuestListProps> = ({
               <option value="arrived">Sort: Arrived</option>
             </select>
           </div>
+
+          {/* Bulk Actions Bar */}
+          {selectedGuests.size > 0 && (
+            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
+              <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                {selectedGuests.size} guest{selectedGuests.size !== 1 ? 's' : ''} selected
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleBulkAction('sms')}
+                  variant="outline"
+                  size="sm"
+                  className="text-green-600 border-green-200 hover:bg-green-50"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Send SMS
+                </Button>
+                <Button
+                  onClick={() => handleBulkAction('delete')}
+                  variant="outline"
+                  size="sm"
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </Button>
+                <Button
+                  onClick={() => setSelectedGuests(new Set())}
+                  variant="outline"
+                  size="sm"
+                  className="text-slate-600"
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* --- Content Area --- */}
@@ -521,16 +646,33 @@ const GuestList: React.FC<GuestListProps> = ({
                 <table className="w-full">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                      <th className="text-left py-3 px-6 w-12">
+                        <input
+                          type="checkbox"
+                          checked={filteredGuests.length > 0 && selectedGuests.size === filteredGuests.length}
+                          onChange={handleSelectAll}
+                          className="w-4 h-4 text-rose-600 bg-white border-slate-300 rounded focus:ring-rose-500 focus:ring-2 cursor-pointer"
+                        />
+                      </th>
                       <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Guest</th>
                       <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                       <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Table</th>
-                      <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                      <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">RSVP Status</th>
+                      <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Check-in</th>
                       <th className="text-left py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
                     {filteredGuests.map((guest) => (
                       <tr key={guest.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                        <td className="py-4 px-6">
+                          <input
+                            type="checkbox"
+                            checked={selectedGuests.has(guest.id)}
+                            onChange={() => handleSelectGuest(guest.id)}
+                            className="w-4 h-4 text-rose-600 bg-white border-slate-300 rounded focus:ring-rose-500 focus:ring-2 cursor-pointer"
+                          />
+                        </td>
                         <td className="py-4 px-6">
                           <div className="flex items-center space-x-3">
                             <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ${getAvatarColor(guest.name)}`}>
@@ -545,15 +687,30 @@ const GuestList: React.FC<GuestListProps> = ({
                         </td>
                         <td className="py-4 px-6 text-sm font-medium">{guest.table_number || '-'}</td>
                         <td className="py-4 px-6">
-                           <div className="flex flex-col gap-1">
-                             <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                guest.rsvp_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 
-                                guest.rsvp_status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
-                              }`}>
-                                {guest.rsvp_status === 'accepted' ? 'Accepted' : guest.rsvp_status === 'declined' ? 'Declined' : 'Pending'}
+                          <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            guest.rsvp_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 
+                            guest.rsvp_status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {guest.rsvp_status === 'accepted' ? 'Accepted' : guest.rsvp_status === 'declined' ? 'Declined' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6">
+                          {guest.is_checked_in ? (
+                            <div className="flex flex-col">
+                              <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
+                                ✅ Checked In
                               </span>
-                              {guest.is_checked_in && <span className="text-[10px] text-green-600 font-medium">● Arrived</span>}
-                           </div>
+                              {guest.checked_in_at && (
+                                <span className="text-[10px] text-slate-500 mt-1">
+                                  {new Date(guest.checked_in_at).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                              ⏳ Not Checked In
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-6">
                           <div className="flex items-center space-x-1">
@@ -575,50 +732,77 @@ const GuestList: React.FC<GuestListProps> = ({
               <div className="md:hidden space-y-3 p-4">
                 {filteredGuests.map((guest) => (
                   <div key={guest.id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${getAvatarColor(guest.name)}`}>
-                          {getInitials(guest.name)}
+                    <div className="flex items-start gap-3 mb-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedGuests.has(guest.id)}
+                        onChange={() => handleSelectGuest(guest.id)}
+                        className="mt-1 w-4 h-4 text-rose-600 bg-white border-slate-300 rounded focus:ring-rose-500 focus:ring-2 cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${getAvatarColor(guest.name)}`}>
+                              {getInitials(guest.name)}
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-slate-900 dark:text-white leading-tight">{guest.name}</h4>
+                              <div className="text-xs text-slate-500 mt-0.5">Table: {guest.table_number || 'None'}</div>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-semibold text-slate-900 dark:text-white leading-tight">{guest.name}</h4>
-                          <div className="text-xs text-slate-500 mt-0.5">Table: {guest.table_number || 'None'}</div>
+
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide ${
+                            guest.rsvp_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 
+                            guest.rsvp_status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {guest.rsvp_status || 'Pending'}
+                          </span>
+                          {guest.is_checked_in ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700">
+                              ✅ Checked In
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide bg-yellow-100 text-yellow-700">
+                              ⏳ Not Checked In
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mb-4">
+                           {guest.email && <div className="flex items-center"><svg className="w-3.5 h-3.5 mr-2 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>{guest.email}</div>}
+                           {guest.phone && <div className="flex items-center"><svg className="w-3.5 h-3.5 mr-2 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>{guest.phone}</div>}
+                           {guest.is_checked_in && guest.checked_in_at && (
+                             <div className="text-xs text-green-600 font-medium">
+                               Arrived: {new Date(guest.checked_in_at).toLocaleString()}
+                             </div>
+                           )}
+                        </div>
+
+                        <div className="grid grid-cols-5 gap-2 border-t border-slate-100 dark:border-slate-700 pt-3">
+                           <button onClick={() => handleSendInvitation(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-green-600 text-[10px]">
+                             <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                             SMS
+                           </button>
+                           <button onClick={() => handleCopyInvitationLink(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-blue-600 text-[10px]">
+                             <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /></svg>
+                             Link
+                           </button>
+                           <button onClick={() => handleShowQRCode(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-purple-600 text-[10px]">
+                             <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01" /></svg>
+                             QR
+                           </button>
+                           <button onClick={() => onEditGuest(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-slate-800 text-[10px]">
+                             <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                             Edit
+                           </button>
+                           <button onClick={() => handleDeleteGuest(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-red-600 text-[10px]">
+                             <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                             Delete
+                           </button>
                         </div>
                       </div>
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide ${
-                        guest.rsvp_status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 
-                        guest.rsvp_status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {guest.rsvp_status || 'Pending'}
-                      </span>
-                    </div>
-
-                    <div className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mb-4">
-                       {guest.email && <div className="flex items-center"><svg className="w-3.5 h-3.5 mr-2 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>{guest.email}</div>}
-                       {guest.phone && <div className="flex items-center"><svg className="w-3.5 h-3.5 mr-2 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>{guest.phone}</div>}
-                    </div>
-
-                    <div className="grid grid-cols-5 gap-2 border-t border-slate-100 dark:border-slate-700 pt-3">
-                       <button onClick={() => handleSendInvitation(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-green-600 text-[10px]">
-                         <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                         SMS
-                       </button>
-                       <button onClick={() => handleCopyInvitationLink(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-blue-600 text-[10px]">
-                         <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /></svg>
-                         Link
-                       </button>
-                       <button onClick={() => handleShowQRCode(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-purple-600 text-[10px]">
-                         <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01" /></svg>
-                         QR
-                       </button>
-                       <button onClick={() => onEditGuest(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-slate-800 text-[10px]">
-                         <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                         Edit
-                       </button>
-                       <button onClick={() => handleDeleteGuest(guest)} className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-red-600 text-[10px]">
-                         <svg className="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                         Delete
-                       </button>
                     </div>
                   </div>
                 ))}

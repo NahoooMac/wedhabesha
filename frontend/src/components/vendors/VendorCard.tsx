@@ -35,15 +35,8 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onContact, onViewProfil
   const handleMessageVendorClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Check if user is signed in
-    if (!user) {
-      // Redirect to sign-in page
-      navigate('/login');
-      return;
-    }
-    
-    // Only allow couples to message vendors
-    if (user.user_type !== 'COUPLE') {
+    // Only allow couples to message vendors (if user is logged in)
+    if (user && user.user_type !== 'COUPLE') {
       alert('Only couples can message vendors. Please log in as a couple.');
       return;
     }
@@ -51,6 +44,7 @@ const VendorCard: React.FC<VendorCardProps> = ({ vendor, onContact, onViewProfil
     try {
       setMessagingVendor(true);
       
+      // Use the messaging utility which handles authentication check and redirect
       await handleMessageVendor(
         vendor.id.toString(),
         vendor.business_name,

@@ -53,10 +53,13 @@ class NotificationService {
   /**
    * Send vendor verification notification
    * @param {number} vendorId - Vendor ID
-   * @param {string} status - Verification status ('verified', 'rejected')
-   * @param {string} reason - Reason for rejection (optional)
+   * @param {string} status - Verification status ('approved', 'rejected')
+   * @param {Object} options - Additional options
+   * @param {string} options.adminMessage - Message from admin (for approval)
+   * @param {string} options.rejectionReason - Reason for rejection (required for rejection)
+   * @param {string} options.additionalNotes - Additional notes from admin (optional)
    */
-  async sendVendorVerificationNotification(vendorId, status, reason = null) {
+  async sendVendorVerificationNotification(vendorId, status, options = {}) {
     try {
       // Get vendor details
       const vendorResult = await query(`
@@ -72,22 +75,38 @@ class NotificationService {
 
       const vendor = vendorResult.rows[0];
 
+      // Determine notification title and message based on status
+      let title, message;
+      
+      if (status === 'approved') {
+        title = 'Application Approved!';
+        message = options.adminMessage || 'Congratulations! Your vendor application has been approved. You are now visible to customers and can start receiving leads.';
+      } else if (status === 'rejected') {
+        title = 'Application Rejected';
+        const rejectionReason = options.rejectionReason || 'Your application did not meet our requirements.';
+        const additionalNotes = options.additionalNotes ? `\n\nAdditional Notes: ${options.additionalNotes}` : '';
+        message = `Rejection Reason: ${rejectionReason}${additionalNotes}`;
+      } else {
+        title = 'Verification Update';
+        message = `Your verification status has been updated to: ${status}`;
+      }
+
       // Create notification record
       await this.createNotification({
         user_id: vendor.user_id,
-        type: 'vendor_verification',
-        title: status === 'verified' ? 'Account Verified!' : 'Verification Update',
-        message: this.getVerificationMessage(status, reason),
+        type: status === 'approved' ? 'vendor_approved' : 'vendor_rejected',
+        title: title,
+        message: message,
         data: {
           vendor_id: vendorId,
           status,
-          reason
+          ...options
         }
       });
 
       // Send SMS notification if phone is available and verified
       if (vendor.phone && vendor.phone_verified) {
-        await this.sendVerificationSMS(vendor.phone, vendor.business_name, status, reason);
+        await this.sendVerificationSMS(vendor.phone, vendor.business_name, status, options);
       }
 
       console.log(`✅ Verification notification sent to vendor ${vendorId} (${status})`);
@@ -494,14 +513,17 @@ class NotificationService {
   /**
    * Send SMS verification notification
    */
-  async sendVerificationSMS(phone, businessName, status, reason) {
+  async sendVerificationSMS(phone, businessName, status, options = {}) {
     try {
       let message;
       
-      if (status === 'verified') {
-        message = `🎉 Great news! Your ${businessName} account has been verified by WedHabesha. You are now visible to customers and can start receiving leads. Welcome to our verified vendor community!`;
+      if (status === 'approved') {
+        const adminMessage = options.adminMessage || 'Your account has been verified by WedHabesha.';
+        message = `🎉 Great news! ${adminMessage} You are now visible to customers and can start receiving leads. Welcome to our verified vendor community!`;
       } else if (status === 'rejected') {
-        message = `Your ${businessName} verification was not approved. ${reason ? `Reason: ${reason}` : 'Please review your profile and resubmit.'} Contact support for assistance.`;
+        const rejectionReason = options.rejectionReason || 'Your application did not meet our requirements.';
+        const additionalNotes = options.additionalNotes ? ` ${options.additionalNotes}` : '';
+        message = `Your ${businessName} application was not approved. Reason: ${rejectionReason}.${additionalNotes} Contact support for assistance.`;
       } else {
         message = `Your ${businessName} verification status has been updated to: ${status}. Check your dashboard for details.`;
       }
@@ -516,11 +538,12 @@ class NotificationService {
   }
 
   /**
-   * Get verification message based on status
+   * Get verification message based on status (deprecated - kept for backward compatibility)
    */
   getVerificationMessage(status, reason) {
     switch (status) {
       case 'verified':
+      case 'approved':
         return 'Congratulations! Your account has been verified. You are now visible to customers and can start receiving leads.';
       case 'rejected':
         return reason 

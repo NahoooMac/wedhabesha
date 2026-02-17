@@ -9,6 +9,7 @@ import { ContentModerationDashboard } from '../components/admin/ContentModeratio
 import { PlatformAnalyticsDashboard } from '../components/admin/PlatformAnalyticsDashboard';
 import { AuditLogViewer } from '../components/admin/AuditLogViewer';
 import UserManagement from '../components/admin/UserManagement';
+import NotificationManagement from '../components/admin/NotificationManagement';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import { Sun, Moon } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -97,9 +98,14 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
     </svg>
   ),
+  Bell: ({ className = "w-5 h-5" }) => (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  ),
 };
 
-type TabType = 'overview' | 'analytics' | 'users' | 'vendor-approval' | 'subscriptions' | 'performance' | 'moderation' | 'audit' | 'settings';
+type TabType = 'overview' | 'analytics' | 'users' | 'vendor-approval' | 'subscriptions' | 'performance' | 'moderation' | 'notifications' | 'audit' | 'settings';
 
 // API function to fetch admin analytics
 const fetchAdminAnalytics = async () => {
@@ -177,6 +183,7 @@ const AdminDashboardPage: React.FC = () => {
     { id: 'subscriptions', label: 'Subscriptions', icon: Icons.CreditCard },
     { id: 'performance', label: 'Vendor Performance', icon: Icons.TrendingUp },
     { id: 'moderation', label: 'Content Moderation', icon: Icons.Shield },
+    { id: 'notifications', label: 'Notifications', icon: Icons.Bell },
     { id: 'audit', label: 'Audit Logs', icon: Icons.FileText },
     { id: 'settings', label: 'Settings', icon: Icons.Settings },
   ];
@@ -612,6 +619,7 @@ const AdminDashboardPage: React.FC = () => {
             {activeTab === 'subscriptions' && <VendorSubscriptionManagement />}
             {activeTab === 'performance' && <VendorPerformanceMonitoring />}
             {activeTab === 'moderation' && <ContentModerationDashboard />}
+            {activeTab === 'notifications' && <NotificationManagement />}
             {activeTab === 'audit' && <AuditLogViewer />}
             {activeTab === 'settings' && <UniversalSettings userType="ADMIN" darkMode={darkMode} setDarkMode={setDarkMode} />}
           </div>

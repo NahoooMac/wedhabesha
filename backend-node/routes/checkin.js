@@ -7,7 +7,7 @@ const router = express.Router();
 // Scan QR code for check-in
 router.post('/scan-qr', authenticateStaff, async (req, res) => {
   try {
-    const { qr_code } = req.body;
+    const { qr_code, checked_in_at } = req.body;
     const weddingId = req.staffSession.weddingId;
 
     if (!qr_code) {
@@ -25,6 +25,19 @@ router.post('/scan-qr', authenticateStaff, async (req, res) => {
     `, [qr_code, weddingId]);
 
     if (guestResult.rows.length === 0) {
+      // Check if QR code exists for a different wedding
+      const otherWeddingResult = await query(`
+        SELECT id, wedding_id FROM guests WHERE qr_code = ?
+      `, [qr_code]);
+
+      if (otherWeddingResult.rows.length > 0) {
+        return res.status(404).json({
+          error: 'Not Found',
+          message: 'Not invited to this wedding',
+          detail: 'This guest is registered for a different wedding'
+        });
+      }
+
       return res.status(404).json({
         error: 'Not Found',
         message: 'Invalid QR code or guest not found'
@@ -44,13 +57,16 @@ router.post('/scan-qr', authenticateStaff, async (req, res) => {
       });
     }
 
+    // Use provided timestamp or current time
+    const timestamp = checked_in_at || new Date().toISOString();
+
     // Check in the guest
     const checkInResult = await query(`
       UPDATE guests 
-      SET is_checked_in = true, checked_in_at = CURRENT_TIMESTAMP
+      SET is_checked_in = true, checked_in_at = ?
       WHERE id = ?
       RETURNING name, checked_in_at
-    `, [guest.id]);
+    `, [timestamp, guest.id]);
 
     const checkedInGuest = checkInResult.rows[0];
 
@@ -216,6 +232,60 @@ router.get('/guests', authenticateStaff, async (req, res) => {
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to get guest list'
+    });
+  }
+});
+
+// Get check-in history
+router.get('/history', authenticateStaff, async (req, res) => {
+  try {
+    const weddingId = req.staffSession.weddingId;
+    const { limit = '100', method_filter, time_filter } = req.query;
+
+    let historyQuery = `
+      SELECT 
+        g.id,
+        g.name as guest_name,
+        g.checked_in_at,
+        g.table_number,
+        'MANUAL' as method,
+        'Staff' as checked_in_by
+      FROM guests g
+      WHERE g.wedding_id = ? AND g.is_checked_in = true
+    `;
+    const queryParams = [weddingId];
+
+    // Apply method filter
+    if (method_filter && method_filter !== 'all') {
+      // For now, all check-ins are marked as MANUAL
+      // In the future, you can add a method column to track QR_SCAN vs MANUAL
+      if (method_filter === 'QR_SCAN') {
+        // Return empty array if filtering for QR scans (not implemented yet)
+        return res.json([]);
+      }
+    }
+
+    // Apply time filter
+    if (time_filter && time_filter !== 'all') {
+      if (time_filter === 'last_hour') {
+        historyQuery += ` AND g.checked_in_at >= datetime('now', '-1 hour')`;
+      } else if (time_filter === 'last_30min') {
+        historyQuery += ` AND g.checked_in_at >= datetime('now', '-30 minutes')`;
+      }
+    }
+
+    historyQuery += ` ORDER BY g.checked_in_at DESC LIMIT ?`;
+    queryParams.push(parseInt(limit));
+
+    const historyResult = await query(historyQuery, queryParams);
+
+    res.json(historyResult.rows);
+
+  } catch (error) {
+    console.error('Get check-in history error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get check-in history'
     });
   }
 });

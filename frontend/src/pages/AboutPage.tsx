@@ -382,14 +382,24 @@ const Layout: React.FC<LayoutProps> = ({ children, lang, setLang }) => {
 // --- MAIN COMPONENT ---
 
 const AboutPage: React.FC = () => {
-  const { t } = useTranslation();
+  const [lang, setLang] = useState<'en' | 'am'>('en');
   const [isVisible, setIsVisible] = useState(false);
+  const t = translations[lang];
 
   useEffect(() => {
     setIsVisible(true);
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     if (savedDarkMode) document.documentElement.classList.add('dark');
+    
+    // Load saved language preference
+    const savedLang = localStorage.getItem('language') as 'en' | 'am' | null;
+    if (savedLang) setLang(savedLang);
   }, []);
+
+  // Save language preference when it changes
+  useEffect(() => {
+    localStorage.setItem('language', lang);
+  }, [lang]);
 
   const stats = [
     { number: "10,000+", label: t.stats.couples, icon: <Heart className="w-6 h-6" /> },
@@ -439,7 +449,7 @@ const AboutPage: React.FC = () => {
   const milestones = t.journey.milestones;
 
   return (
-    <Layout>
+    <Layout lang={lang} setLang={setLang}>
         {/* Hero Section */}
         <div className="relative overflow-hidden bg-white dark:bg-gray-950 pt-20">
           {/* Background Elements */}

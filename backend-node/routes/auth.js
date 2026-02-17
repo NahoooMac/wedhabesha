@@ -5,6 +5,7 @@ const { body, validationResult } = require('express-validator');
 const { query } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const twoFactorService = require('../services/twoFactorService');
+const otpService = require('../services/otpService');
 const registrationService = require('../services/registrationService');
 
 const router = express.Router();
@@ -240,19 +241,44 @@ router.post('/register/switch-method', async (req, res) => {
 
 // Validation rules
 const registerValidation = [
-  body('email').isEmail().normalizeEmail(),
+  body('email')
+    .if(body('email').notEmpty())
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please enter a valid email address'),
+  body('phone')
+    .if(body('phone').notEmpty())
+    .isMobilePhone()
+    .withMessage('Please enter a valid phone number'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('partner1_name').notEmpty().withMessage('Partner 1 name is required'),
-  body('partner2_name').notEmpty().withMessage('Partner 2 name is required')
+  // Custom validation to ensure at least one of email or phone is provided
+  body().custom((value, { req }) => {
+    if (!req.body.email && !req.body.phone) {
+      throw new Error('Please provide either email or phone number');
+    }
+    return true;
+  })
 ];
 
 const vendorRegisterValidation = [
-  body('email').isEmail().normalizeEmail().withMessage('Please enter a valid email address'),
+  body('email')
+    .if(body('email').notEmpty())
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please enter a valid email address'),
+  body('phone')
+    .if(body('phone').notEmpty())
+    .isMobilePhone()
+    .withMessage('Please enter a valid phone number'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('business_name').notEmpty().withMessage('Business name is required'),
-  body('business_type').notEmpty().withMessage('Business type is required'),
-  body('phone').notEmpty().withMessage('Phone number is required'),
-  body('location').optional()
+  // Custom validation to ensure at least one of email or phone is provided
+  body().custom((value, { req }) => {
+    if (!req.body.email && !req.body.phone) {
+      throw new Error('Please provide either email or phone number');
+    }
+    return true;
+  })
 ];
 
 const loginValidation = [
@@ -272,19 +298,25 @@ router.post('/register/vendor', vendorRegisterValidation, async (req, res) => {
       });
     }
 
-    const { email, password, business_name, business_type, phone, location } = req.body;
+    const { email, phone, password, business_name } = req.body;
 
-    // Check if user already exists
-    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
-      return res.status(409).json({
-        error: 'Conflict',
-        message: 'User with this email already exists'
-      });
+    // Determine if using email or phone for registration
+    const useEmail = !!email;
+    const usePhone = !!phone;
+
+    // Check if user already exists by email
+    if (useEmail) {
+      const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+      if (existingUser.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Conflict',
+          message: 'User with this email already exists'
+        });
+      }
     }
 
-    // Check if phone number is already taken (if provided)
-    if (phone) {
+    // Check if phone number is already taken
+    if (usePhone) {
       const existingPhone = await query('SELECT id FROM vendors WHERE phone = $1', [phone]);
       if (existingPhone.rows.length > 0) {
         return res.status(409).json({
@@ -298,21 +330,32 @@ router.post('/register/vendor', vendorRegisterValidation, async (req, res) => {
     const saltRounds = 12;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
+    // Create temporary email if only phone provided
+    const userEmail = useEmail ? email : `${phone}@temp.wedding`;
+
     // Create user
     const userResult = await query(`
       INSERT INTO users (email, password_hash, user_type, auth_provider)
       VALUES ($1, $2, 'VENDOR', 'EMAIL')
       RETURNING id, email, user_type, auth_provider, created_at
-    `, [email, passwordHash]);
+    `, [userEmail, passwordHash]);
 
     const user = userResult.rows[0];
 
-    // Create vendor profile
+    // Create vendor profile with minimal information
+    // Business type and location will be added later in the profile setup
     const vendorResult = await query(`
       INSERT INTO vendors (user_id, business_name, category, location, description, phone, is_verified, verification_status)
       VALUES ($1, $2, $3, $4, $5, $6, 0, 'pending')
       RETURNING id
-    `, [user.id, business_name, business_type, location || '', business_name, phone]);
+    `, [
+      user.id, 
+      business_name, 
+      'other', // Default category, will be updated in profile
+      '', // Empty location, will be updated in profile
+      business_name, 
+      phone || null
+    ]);
 
     const vendor = vendorResult.rows[0];
 
@@ -331,7 +374,8 @@ router.post('/register/vendor', vendorRegisterValidation, async (req, res) => {
       expires_in: 7 * 24 * 60 * 60, // 7 days in seconds
       user: {
         id: user.id,
-        email: user.email,
+        email: useEmail ? user.email : null,
+        phone: usePhone ? phone : null,
         user_type: user.user_type,
         auth_provider: user.auth_provider
       },
@@ -361,13 +405,23 @@ router.post('/register/couple', registerValidation, async (req, res) => {
 
     const { email, password, partner1_name, partner2_name, phone } = req.body;
 
-    // Check if user already exists
-    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
-      return res.status(409).json({
-        error: 'Conflict',
-        message: 'User with this email already exists'
+    // Require either email or phone
+    if (!email && !phone) {
+      return res.status(400).json({
+        error: 'Validation Error',
+        message: 'Please provide either email or phone number'
       });
+    }
+
+    // Check if user already exists by email
+    if (email) {
+      const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+      if (existingUser.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Conflict',
+          message: 'User with this email already exists'
+        });
+      }
     }
 
     // Check if phone number is already taken (if provided)
@@ -385,21 +439,22 @@ router.post('/register/couple', registerValidation, async (req, res) => {
     const saltRounds = 12;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Create user
+    // Create user (use phone as email if email not provided)
+    const userEmail = email || `${phone}@temp.wedding`;
     const userResult = await query(`
       INSERT INTO users (email, password_hash, user_type, auth_provider)
       VALUES ($1, $2, 'COUPLE', 'EMAIL')
       RETURNING id, email, user_type, auth_provider, created_at
-    `, [email, passwordHash]);
+    `, [userEmail, passwordHash]);
 
     const user = userResult.rows[0];
 
-    // Create couple profile
+    // Create couple profile (partner names can be null initially)
     const coupleResult = await query(`
       INSERT INTO couples (user_id, partner1_name, partner2_name, phone)
       VALUES ($1, $2, $3, $4)
       RETURNING id
-    `, [user.id, partner1_name, partner2_name, phone]);
+    `, [user.id, partner1_name || 'Partner 1', partner2_name || 'Partner 2', phone || null]);
 
     const couple = coupleResult.rows[0];
 
@@ -434,6 +489,11 @@ router.post('/register/couple', registerValidation, async (req, res) => {
 
   } catch (error) {
     console.error('Registration error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to register user'
@@ -457,9 +517,9 @@ router.post('/login', loginValidation, async (req, res) => {
 
     // Get user
     const userResult = await query(`
-      SELECT id, email, password_hash, user_type, auth_provider, is_active, two_factor_enabled
+      SELECT id, email, password_hash, user_type, auth_provider, is_active, two_factor_enabled, two_factor_method
       FROM users 
-      WHERE email = $1 AND auth_provider = 'EMAIL'
+      WHERE email = ? AND auth_provider = 'EMAIL'
     `, [email]);
 
     if (userResult.rows.length === 0) {
@@ -489,8 +549,47 @@ router.post('/login', loginValidation, async (req, res) => {
 
     // Check if 2FA is enabled
     if (user.two_factor_enabled) {
+      // If SMS 2FA is enabled, automatically send the OTP code
+      if (user.two_factor_method === 'sms') {
+        // Get phone number from couples or vendors table
+        let phone = null;
+        try {
+          const coupleResult = await query(`SELECT phone FROM couples WHERE user_id = ?`, [user.id]);
+          if (coupleResult.rows.length > 0 && coupleResult.rows[0].phone) {
+            phone = coupleResult.rows[0].phone;
+          }
+        } catch (error) {
+          console.log('Error checking couples table:', error.message);
+        }
+        
+        if (!phone) {
+          try {
+            const vendorResult = await query(`SELECT phone FROM vendors WHERE user_id = ?`, [user.id]);
+            if (vendorResult.rows.length > 0 && vendorResult.rows[0].phone) {
+              phone = vendorResult.rows[0].phone;
+            }
+          } catch (error) {
+            console.log('Error checking vendors table:', error.message);
+          }
+        }
+
+        if (phone) {
+          // Send SMS OTP for login
+          const otpResult = await otpService.generateAndSendOTP(phone, '2FA_LOGIN', user.id);
+          
+          if (!otpResult.success) {
+            console.error('Failed to send login SMS OTP:', otpResult.message);
+          } else {
+            console.log('✅ Login SMS OTP sent successfully to:', phone);
+          }
+        } else {
+          console.warn('No phone number found for SMS 2FA');
+        }
+      }
+      
       return res.status(200).json({
         requires2FA: true,
+        twoFactorMethod: user.two_factor_method || 'authenticator',
         message: 'Two-factor authentication required',
         userId: user.id,
         email: user.email
@@ -498,7 +597,7 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     // Update last login
-    await query('UPDATE users SET last_login_at = datetime("now") WHERE id = $1', [user.id]);
+    await query('UPDATE users SET last_login_at = datetime("now") WHERE id = ?', [user.id]);
 
     // Generate access token
     const accessToken = generateToken(user.id, user.user_type);
@@ -869,7 +968,7 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     }
 
     // Get current password hash
-    const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    const userResult = await query('SELECT password_hash FROM users WHERE id = ?', [userId]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({
         error: 'Not Found',
@@ -893,7 +992,37 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     const newPasswordHash = await bcrypt.hash(new_password, saltRounds);
 
     // Update password
-    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newPasswordHash, userId]);
+    await query('UPDATE users SET password_hash = ? WHERE id = ?', [newPasswordHash, userId]);
+
+    // Create system notification for password change
+    try {
+      const ipAddress = req.ip || req.connection.remoteAddress;
+      const timestamp = new Date().toLocaleString('en-US', { 
+        timeZone: 'Africa/Addis_Ababa',
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+      
+      await query(`
+        INSERT INTO notifications (user_id, type, title, message, is_read, data)
+        VALUES (?, ?, ?, ?, 0, ?)
+      `, [
+        userId,
+        'alert',
+        'Password Changed',
+        `Your password was successfully changed on ${timestamp}. If you didn't make this change, please contact support immediately.`,
+        JSON.stringify({ 
+          event: 'password_changed',
+          ip_address: ipAddress,
+          timestamp: new Date().toISOString()
+        })
+      ]);
+      
+      console.log('✅ Password change notification created for user:', userId);
+    } catch (notifError) {
+      console.error('Failed to create password change notification:', notifError);
+      // Don't fail the password change if notification fails
+    }
 
     res.json({
       message: 'Password changed successfully'

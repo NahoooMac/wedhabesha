@@ -85,62 +85,11 @@ const LiveMonitoringDashboard: React.FC<LiveMonitoringDashboardProps> = ({ weddi
   }, []);
 
   const connectWebSocket = React.useCallback(() => {
-    const staffToken = localStorage.getItem('access_token');
-    if (!staffToken) {
-      setConnectionError('No staff session token available');
-      return;
-    }
-
-    try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/wedding/${weddingId}?token=${staffToken}`;
-      
-      wsRef.current = new WebSocket(wsUrl);
-
-      wsRef.current.onopen = () => {
-        setIsConnected(true);
-        setConnectionError(null);
-        console.log('WebSocket connected for live monitoring');
-      };
-
-      wsRef.current.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          
-          if (message.type === 'stats_update') {
-            setStats(message.data);
-            setLastUpdate(new Date());
-          } else if (message.type === 'checkin_update') {
-            // Refresh data when check-in occurs
-            fetchData();
-          } else if (message.type === 'guest_update') {
-            // Refresh guest list when guest data changes
-            fetchData();
-          }
-        } catch (err) {
-          console.error('Failed to parse WebSocket message:', err);
-        }
-      };
-
-      wsRef.current.onclose = () => {
-        setIsConnected(false);
-        console.log('WebSocket disconnected');
-        
-        // Attempt to reconnect after 5 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
-        }, 5000);
-      };
-
-      wsRef.current.onerror = (error) => {
-        setConnectionError('WebSocket connection failed');
-        console.error('WebSocket error:', error);
-      };
-
-    } catch (err) {
-      setConnectionError('Failed to establish WebSocket connection');
-      console.error('WebSocket setup error:', err);
-    }
+    // WebSocket for staff monitoring is not yet implemented
+    // Using polling as fallback
+    console.log('WebSocket for staff monitoring not available - using polling');
+    setConnectionError('Live updates via WebSocket not available - using auto-refresh');
+    setIsConnected(false);
   }, [weddingId, fetchData]);
 
   const disconnectWebSocket = () => {
@@ -159,16 +108,16 @@ const LiveMonitoringDashboard: React.FC<LiveMonitoringDashboardProps> = ({ weddi
 
   useEffect(() => {
     fetchData();
-    connectWebSocket();
     
-    // Auto-refresh every 30 seconds as fallback
-    const interval = setInterval(fetchData, 30000);
+    // Note: WebSocket for staff monitoring not yet implemented
+    // Using polling as fallback - refresh every 10 seconds for near real-time updates
+    const interval = setInterval(fetchData, 10000);
     
     return () => {
       clearInterval(interval);
       disconnectWebSocket();
     };
-  }, [weddingId, fetchData, connectWebSocket]);
+  }, [weddingId, fetchData]);
 
   // Calculate arrival patterns by hour
   const arrivalPatterns = React.useMemo(() => {
@@ -249,20 +198,12 @@ const LiveMonitoringDashboard: React.FC<LiveMonitoringDashboardProps> = ({ weddi
           <div className="flex items-center space-x-4 text-sm text-gray-600">
             <span>Last updated: {lastUpdate.toLocaleTimeString()}</span>
             <div className="flex items-center space-x-1">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
-              <span>{isConnected ? 'Live' : 'Offline'}</span>
+              <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+              <span>Auto-refresh (10s)</span>
             </div>
           </div>
         </div>
         <div className="flex space-x-2">
-          <Button
-            onClick={connectWebSocket}
-            variant="outline"
-            size="sm"
-            disabled={isConnected}
-          >
-            🔗 {isConnected ? 'Connected' : 'Connect'}
-          </Button>
           <Button
             onClick={fetchData}
             variant="outline"
@@ -276,15 +217,6 @@ const LiveMonitoringDashboard: React.FC<LiveMonitoringDashboardProps> = ({ weddi
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <p className="text-red-600">{error}</p>
-        </div>
-      )}
-
-      {connectionError && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-yellow-600">⚠️</span>
-            <p className="text-yellow-800">WebSocket: {connectionError}</p>
-          </div>
         </div>
       )}
 

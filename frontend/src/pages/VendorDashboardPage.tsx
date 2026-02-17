@@ -41,6 +41,7 @@ import WorkingHoursInput from '../components/vendors/WorkingHoursInput';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import VendorMessaging from '../components/vendors/VendorMessaging';
 import NotificationBadge from '../components/shared/NotificationBadge';
+import NotificationDropdown from '../components/shared/NotificationDropdown';
 import TwoFactorWarningBanner from '../components/shared/TwoFactorWarningBanner';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { vendorApi } from '../lib/api';
@@ -1192,7 +1193,7 @@ const DashboardHome = ({ vendor, setView }: { vendor: VendorProfileData, setView
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Good Morning, {vendor.businessName || 'Partner'}! 👋</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Hello, {vendor.businessName || 'Partner'}! 👋</h1>
             <p className="text-slate-500 dark:text-slate-400 mt-1">Here's what's happening with your wedding business today.</p>
           </div>
 
@@ -1533,6 +1534,39 @@ const VendorDashboardPage: React.FC = () => {
   // Unread messages hook
   const { totalUnread } = useUnreadMessages(user?.id?.toString() || '');
 
+  // Check for URL parameters to set initial tab
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    
+    if (tabParam === 'messages') {
+      setActiveView('messages');
+      // Clear the URL parameter
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    
+    // Check for pending vendor message from login redirect
+    const pendingMessage = localStorage.getItem('pendingVendorMessage');
+    if (pendingMessage) {
+      setActiveView('messages');
+      localStorage.removeItem('pendingVendorMessage');
+    }
+
+    // Listen for custom event from NotificationDropdown
+    const handleViewChangeEvent = (event: CustomEvent) => {
+      const { view } = event.detail;
+      if (view) {
+        setActiveView(view);
+      }
+    };
+
+    window.addEventListener('changeVendorView', handleViewChangeEvent as EventListener);
+
+    return () => {
+      window.removeEventListener('changeVendorView', handleViewChangeEvent as EventListener);
+    };
+  }, []);
+
   // Performance monitoring
   useEffect(() => {
     performanceMonitor.startMeasure('VendorDashboard-Initial-Load');
@@ -1806,12 +1840,12 @@ const VendorDashboardPage: React.FC = () => {
             </h2>
           </div>
           <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900"></span>
-            </button>
+            <NotificationDropdown userId={user?.id?.toString() || ''} userType="VENDOR" />
             <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
-            <button className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium text-sm transition-colors">
+            <button 
+              onClick={() => window.open('/help', '_blank')}
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium text-sm transition-colors"
+            >
               <span>Help</span>
             </button>
           </div>

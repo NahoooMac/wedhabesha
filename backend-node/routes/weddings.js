@@ -23,9 +23,13 @@ const generateStaffPin = () => {
 
 // Validation rules
 const weddingValidation = [
+  body('partner1_name').optional().isString().withMessage('Partner 1 name must be a string'),
+  body('partner2_name').optional().isString().withMessage('Partner 2 name must be a string'),
   body('wedding_date').isISO8601().withMessage('Valid wedding date is required'),
-  body('venue_name').notEmpty().withMessage('Venue name is required'),
-  body('venue_address').notEmpty().withMessage('Venue address is required'),
+  body('venue_name').optional().isString().withMessage('Venue name must be a string'),
+  body('venue_address').optional().isString().withMessage('Venue address must be a string'),
+  body('venue_latitude').optional().isFloat().withMessage('Venue latitude must be a number'),
+  body('venue_longitude').optional().isFloat().withMessage('Venue longitude must be a number'),
   body('expected_guests').isInt({ min: 1 }).withMessage('Expected guests must be a positive number')
 ];
 
@@ -41,7 +45,11 @@ router.post('/', authenticateToken, requireRole('COUPLE'), weddingValidation, as
       });
     }
 
-    const { wedding_date, venue_name, venue_address, expected_guests } = req.body;
+    const { partner1_name, partner2_name, wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests } = req.body;
+
+    // Set default values for venue if not provided
+    const finalVenueName = venue_name || 'To be decided';
+    const finalVenueAddress = venue_address || 'To be decided';
 
     // Get couple ID
     const coupleResult = await query('SELECT id FROM couples WHERE user_id = $1', [req.user.id]);
@@ -54,12 +62,35 @@ router.post('/', authenticateToken, requireRole('COUPLE'), weddingValidation, as
 
     const coupleId = coupleResult.rows[0].id;
 
+    // Update couple profile with partner names if provided
+    if (partner1_name || partner2_name) {
+      const updateFields = [];
+      const updateValues = [];
+      let paramIndex = 1;
+
+      if (partner1_name) {
+        updateFields.push(`partner1_name = $${paramIndex++}`);
+        updateValues.push(partner1_name);
+      }
+      if (partner2_name) {
+        updateFields.push(`partner2_name = $${paramIndex++}`);
+        updateValues.push(partner2_name);
+      }
+      updateValues.push(coupleId);
+
+      await query(`
+        UPDATE couples 
+        SET ${updateFields.join(', ')}
+        WHERE id = $${paramIndex}
+      `, updateValues);
+    }
+
     // Check if couple already has a wedding
     const existingWedding = await query('SELECT id FROM weddings WHERE couple_id = $1', [coupleId]);
     if (existingWedding.rows.length > 0) {
       return res.status(409).json({
         error: 'Conflict',
-        message: 'Wedding already exists for this couple'
+        message: 'You already have a wedding profile. Each couple can only create one wedding.'
       });
     }
 
@@ -77,12 +108,20 @@ router.post('/', authenticateToken, requireRole('COUPLE'), weddingValidation, as
 
     // Create wedding
     const weddingResult = await query(`
-      INSERT INTO weddings (couple_id, wedding_code, staff_pin, wedding_date, venue_name, venue_address, expected_guests)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, wedding_code, wedding_date, venue_name, venue_address, expected_guests, created_at
-    `, [coupleId, weddingCode, hashedStaffPin, wedding_date, venue_name, venue_address, expected_guests]);
+      INSERT INTO weddings (couple_id, wedding_code, staff_pin, wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [coupleId, weddingCode, hashedStaffPin, wedding_date, finalVenueName, finalVenueAddress, venue_latitude, venue_longitude, expected_guests]);
 
-    const wedding = weddingResult.rows[0];
+    const weddingId = weddingResult.lastID || weddingResult.rows[0]?.id;
+
+    // Fetch the created wedding
+    const createdWedding = await query(`
+      SELECT id, wedding_code, wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests, created_at
+      FROM weddings
+      WHERE id = $1
+    `, [weddingId]);
+
+    const wedding = createdWedding.rows[0];
 
     res.status(201).json({
       ...wedding,
@@ -114,7 +153,7 @@ router.get('/me', authenticateToken, requireRole('COUPLE'), async (req, res) => 
 
     // Get wedding
     const weddingResult = await query(`
-      SELECT id, wedding_code, wedding_date, venue_name, venue_address, expected_guests, 
+      SELECT id, wedding_code, wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests, 
              template_id, template_customization, invitation_image_url, image_settings, created_at
       FROM weddings 
       WHERE couple_id = ?
@@ -177,8 +216,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
     // Get wedding with couple info
     const weddingResult = await query(`
       SELECT w.id, w.wedding_code, w.wedding_date, w.venue_name, w.venue_address, 
-             w.expected_guests, w.template_id, w.template_customization, w.invitation_image_url, 
-             w.image_settings, w.created_at, c.user_id
+             w.venue_latitude, w.venue_longitude, w.expected_guests, w.template_id, 
+             w.template_customization, w.invitation_image_url, w.image_settings, 
+             w.created_at, c.user_id
       FROM weddings w
       JOIN couples c ON w.couple_id = c.id
       WHERE w.id = $1
@@ -248,7 +288,7 @@ router.put('/:id', authenticateToken, requireRole('COUPLE'), weddingValidation, 
     }
 
     const weddingId = parseInt(req.params.id);
-    const { wedding_date, venue_name, venue_address, expected_guests } = req.body;
+    const { wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests } = req.body;
 
     if (isNaN(weddingId)) {
       return res.status(400).json({
@@ -271,10 +311,10 @@ router.put('/:id', authenticateToken, requireRole('COUPLE'), weddingValidation, 
     // Update wedding
     const weddingResult = await query(`
       UPDATE weddings 
-      SET wedding_date = $1, venue_name = $2, venue_address = $3, expected_guests = $4
-      WHERE id = $5 AND couple_id = $6
-      RETURNING id, wedding_code, wedding_date, venue_name, venue_address, expected_guests, created_at
-    `, [wedding_date, venue_name, venue_address, expected_guests, weddingId, coupleId]);
+      SET wedding_date = $1, venue_name = $2, venue_address = $3, venue_latitude = $4, venue_longitude = $5, expected_guests = $6
+      WHERE id = $7 AND couple_id = $8
+      RETURNING id, wedding_code, wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests, created_at
+    `, [wedding_date, venue_name, venue_address, venue_latitude, venue_longitude, expected_guests, weddingId, coupleId]);
 
     if (weddingResult.rows.length === 0) {
       return res.status(404).json({

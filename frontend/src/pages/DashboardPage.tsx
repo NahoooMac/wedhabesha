@@ -9,11 +9,11 @@ import BudgetPlanning from '../components/budget/BudgetPlanning';
 import CommunicationCenter from '../components/communication/CommunicationCenter';
 import CoupleMessaging from '../components/communication/CoupleMessaging';
 import VendorDirectory from '../components/vendors/VendorDirectory';
-import ProfileSettings from '../components/profile/ProfileSettings';
 import UniversalSettings from '../components/shared/UniversalSettings';
 import UnifiedAnalyticsDashboard from '../components/analytics/UnifiedAnalyticsDashboard';
 import MiniAnalyticsDashboard from '../components/analytics/MiniAnalyticsDashboard';
 import NotificationBadge from '../components/shared/NotificationBadge';
+import NotificationDropdown from '../components/shared/NotificationDropdown';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { AnalyticsProvider } from '../contexts/AnalyticsContext';
 import { weddingApi, WeddingCreateResponse } from '../lib/api';
@@ -116,6 +116,27 @@ const DashboardPage: React.FC = () => {
   // Unread messages hook
   const { totalUnread } = useUnreadMessages(user?.id?.toString() || '');
 
+  // Check for URL parameters to set initial tab
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    
+    if (tabParam === 'communication') {
+      setActiveTab('communication');
+      setCommTab('vendors');
+      
+      // Check for stored thread ID
+      const storedThreadId = localStorage.getItem('openThreadId');
+      if (storedThreadId) {
+        setOpenThreadId(storedThreadId);
+        localStorage.removeItem('openThreadId');
+      }
+      
+      // Clear the URL parameter
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   // Dark mode effect
   useEffect(() => {
     if (darkMode) {
@@ -141,6 +162,17 @@ const DashboardPage: React.FC = () => {
       localStorage.removeItem('openThreadId');
     };
 
+    const handleDashboardTabChange = (event: CustomEvent) => {
+      const { tab, subTab } = event.detail;
+      
+      if (tab) {
+        setActiveTab(tab as TabType);
+      }
+      if (subTab) {
+        setCommTab(subTab as CommTabType);
+      }
+    };
+
     // Check for stored thread ID on mount
     const storedThreadId = localStorage.getItem('openThreadId');
     if (storedThreadId) {
@@ -149,9 +181,11 @@ const DashboardPage: React.FC = () => {
 
     // Listen for custom events
     window.addEventListener('openThread', handleOpenThread as EventListener);
+    window.addEventListener('changeDashboardTab', handleDashboardTabChange as EventListener);
     
     return () => {
       window.removeEventListener('openThread', handleOpenThread as EventListener);
+      window.removeEventListener('changeDashboardTab', handleDashboardTabChange as EventListener);
     };
   }, []);
 
@@ -345,6 +379,18 @@ const DashboardPage: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
+            
+            {/* Right side - Notification and Help */}
+            <div className="flex items-center gap-4">
+              <NotificationDropdown userId={user?.id?.toString() || ''} userType="COUPLE" />
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+              <button 
+                onClick={() => window.open('/help', '_blank')}
+                className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium text-sm transition-colors"
+              >
+                <span>Help</span>
+              </button>
             </div>
           </div>
         </div>
@@ -543,8 +589,7 @@ const DashboardPage: React.FC = () => {
               {activeTab === 'analytics' && (
                 <UnifiedAnalyticsDashboard weddingId={currentWedding.id} />
               )}
-              {activeTab === 'settings' && user?.user_type === 'COUPLE' && <ProfileSettings />}
-              {activeTab === 'settings' && user?.user_type !== 'COUPLE' && <UniversalSettings userType="USER" darkMode={darkMode} setDarkMode={setDarkMode} />}
+              {activeTab === 'settings' && <UniversalSettings userType="COUPLE" darkMode={darkMode} setDarkMode={setDarkMode} />}
             </div>
           )}
         </main>

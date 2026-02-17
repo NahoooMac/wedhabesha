@@ -210,14 +210,12 @@ class AfroSmsService {
           mt.couple_id, mt.vendor_id,
           c.user_id as couple_user_id,
           v.user_id as vendor_user_id,
-          cu.phone as couple_phone, cu.name as couple_name,
-          vu.phone as vendor_phone, vu.name as vendor_name
+          c.phone as couple_phone, c.partner1_name as couple_name,
+          v.phone as vendor_phone, v.business_name as vendor_name
         FROM messages m
         JOIN message_threads mt ON m.thread_id = mt.id
         LEFT JOIN couples c ON mt.couple_id = c.id
         LEFT JOIN vendors v ON mt.vendor_id = v.id
-        LEFT JOIN users cu ON c.user_id = cu.id
-        LEFT JOIN users vu ON v.user_id = vu.id
         WHERE m.delivery_status IN ('sent', 'delivered')
         AND m.created_at <= datetime(?)
         AND m.id NOT IN (

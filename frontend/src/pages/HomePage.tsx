@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { vendorApi } from '../lib/api';
 import { 
   Users, 
   Store, 
@@ -652,6 +653,11 @@ const HomePage: React.FC = () => {
   const [currentFeature, setCurrentFeature] = useState(0);
   const [lang, setLang] = useState<'en' | 'am'>('en');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [vendorCategoriesData, setVendorCategoriesData] = useState<Array<{
+    category: string;
+    count: number;
+    image: string | null;
+  }> | null>(null);
   const location = useLocation();
 
   const t = translations[lang];
@@ -668,6 +674,21 @@ const HomePage: React.FC = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location]);
+
+  // Fetch vendor category summary
+  useEffect(() => {
+    const fetchVendorCategories = async () => {
+      try {
+        const response = await vendorApi.getCategorySummary();
+        setVendorCategoriesData(response.categories);
+      } catch (error) {
+        console.error('Failed to fetch vendor categories:', error);
+        // Keep vendorCategoriesData as null to use fallback images
+      }
+    };
+
+    fetchVendorCategories();
+  }, []);
 
   const toggleDarkMode = () => {
     const newDarkMode = !isDarkMode;
@@ -885,7 +906,7 @@ const HomePage: React.FC = () => {
                                 alt="Ethiopian Couple" 
                                 className="w-full h-full object-cover"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+                            <div className="absolute inset-0 "></div>
                         </div>
 
                         {/* Secondary Floating Image - Top Right */}
@@ -1232,7 +1253,7 @@ const HomePage: React.FC = () => {
             
             <div className="flex flex-col sm:flex-row justify-center gap-6">
               <Link to="/register">
-                <Button size="lg" className="h-16 px-12 text-lg font-bold bg-white text-gray-900 hover:bg-rose-50 rounded-2xl shadow-2xl shadow-white/10 hover:scale-105 transition-transform">
+                <Button size="lg" className="h-16 px-12 text-lg font-bold bg-dark text-gray-900 hover:bg-rose-50 rounded-2xl shadow-2xl shadow-white/10 hover:scale-105 transition-transform">
                   {t.cta.btnPrimary}
                 </Button>
               </Link>

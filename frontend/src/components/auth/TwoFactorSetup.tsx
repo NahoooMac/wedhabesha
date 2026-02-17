@@ -132,11 +132,11 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-full sm:max-w-lg max-h-[95vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white pr-2">
             {step === 'method-choice' && 'Choose 2FA Method'}
             {step === 'setup' && `Setup ${selectedMethod === 'sms' ? 'SMS' : 'Authenticator'} 2FA`}
             {step === 'verify' && 'Verify Your Code'}
@@ -144,50 +144,50 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
           </h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex-shrink-0"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {/* Step 0: Method Choice */}
           {step === 'method-choice' && (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <div className="text-center">
-                <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-indigo-100 dark:bg-indigo-900/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                  <svg className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-2">
                   Choose Your 2FA Method
                 </h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
+                <p className="text-sm text-slate-600 dark:text-slate-400 px-2">
                   Select how you'd like to receive verification codes for two-factor authentication.
                 </p>
               </div>
 
-              <div className="grid gap-4">
+              <div className="grid gap-3 sm:gap-4">
                 {/* Authenticator App Option */}
                 <button
                   onClick={() => handleMethodSelect('authenticator')}
-                  className="p-4 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-left group"
+                  className="p-3 sm:p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg sm:rounded-xl hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-left group active:scale-[0.98]"
                 >
-                  <div className="flex items-start space-x-4">
-                    <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-900/40 transition-colors">
-                      <svg className="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-start space-x-3 sm:space-x-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-900/40 transition-colors">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">Authenticator App</h4>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1 text-sm sm:text-base">Authenticator App</h4>
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-2">
                         Use Google Authenticator, Authy, or similar apps to generate time-based codes.
                       </p>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400">
                           <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -203,20 +203,20 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                 {/* SMS Option */}
                 <button
                   onClick={() => handleMethodSelect('sms')}
-                  className="p-4 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-left group"
+                  className="p-3 sm:p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg sm:rounded-xl hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-left group active:scale-[0.98]"
                 >
-                  <div className="flex items-start space-x-4">
-                    <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/40 transition-colors">
-                      <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-start space-x-3 sm:space-x-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/40 transition-colors">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1">SMS Text Message</h4>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-slate-900 dark:text-white mb-1 text-sm sm:text-base">SMS Text Message</h4>
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-2">
                         Receive verification codes via text message to your phone number.
                       </p>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-400">
                           Easy to use
                         </span>
@@ -227,14 +227,14 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                 </button>
               </div>
 
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 sm:p-4">
+                <div className="flex items-start space-x-2 sm:space-x-3">
                   <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <div>
-                    <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1">Security Note</h4>
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                  <div className="min-w-0">
+                    <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1 text-sm">Security Note</h4>
+                    <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-300">
                       Authenticator apps are more secure than SMS as they work offline and can't be intercepted. 
                       However, both methods significantly improve your account security.
                     </p>
@@ -346,18 +346,18 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                 </div>
               )}
 
-              <div className="flex space-x-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setStep('method-choice')}
-                  className="flex-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 py-3 px-4 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors font-medium"
+                  className="flex-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 py-2.5 sm:py-3 px-4 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors font-medium text-sm sm:text-base active:scale-[0.98]"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleSetupStart}
                   disabled={setup2FAMutation.isPending}
-                  className="flex-1 bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="flex-1 bg-indigo-600 text-white py-2.5 sm:py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm sm:text-base active:scale-[0.98]"
                 >
                   {setup2FAMutation.isPending ? 'Setting up...' : 'Start Setup'}
                 </button>
@@ -385,21 +385,21 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                 <>
                   {/* QR Code */}
                   <div className="flex justify-center">
-                    <div className="bg-white p-4 rounded-lg border border-slate-200">
-                      <img src={qrCode} alt="2FA QR Code" className="w-48 h-48" />
+                    <div className="bg-white p-3 sm:p-4 rounded-lg border border-slate-200">
+                      <img src={qrCode} alt="2FA QR Code" className="w-full max-w-[200px] sm:max-w-[240px] h-auto" />
                     </div>
                   </div>
 
                   {/* Manual Entry */}
-                  <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4">
-                    <h4 className="font-medium text-slate-900 dark:text-white mb-2">Manual Entry Key</h4>
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 sm:p-4">
+                    <h4 className="font-medium text-slate-900 dark:text-white mb-2 text-sm sm:text-base">Manual Entry Key</h4>
                     <div className="flex items-center space-x-2">
-                      <code className="flex-1 text-sm font-mono bg-white dark:bg-slate-900 px-3 py-2 rounded border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white break-all">
+                      <code className="flex-1 text-xs sm:text-sm font-mono bg-white dark:bg-slate-900 px-2 sm:px-3 py-2 rounded border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white break-all">
                         {secret}
                       </code>
                       <button
                         onClick={() => copyToClipboard(secret)}
-                        className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex-shrink-0 active:scale-95"
                         title="Copy to clipboard"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -494,14 +494,14 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                 </p>
               </div>
 
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 sm:p-4">
+                <div className="flex items-start space-x-2 sm:space-x-3">
                   <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
-                  <div>
-                    <h4 className="font-medium text-yellow-800 dark:text-yellow-200">Important Security Information</h4>
-                    <ul className="text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
+                  <div className="min-w-0">
+                    <h4 className="font-medium text-yellow-800 dark:text-yellow-200 text-sm">Important Security Information</h4>
+                    <ul className="text-xs sm:text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
                       <li>• Each backup code can only be used once</li>
                       <li>• Store these codes in a secure location</li>
                       <li>• Don't share them with anyone</li>
@@ -511,12 +511,12 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                 </div>
               </div>
 
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4">
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium text-slate-900 dark:text-white">Backup Codes</h4>
+                  <h4 className="font-medium text-slate-900 dark:text-white text-sm sm:text-base">Backup Codes</h4>
                   <button
                     onClick={downloadBackupCodes}
-                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center space-x-1"
+                    className="text-xs sm:text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center space-x-1 active:scale-95"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -524,11 +524,11 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
                     <span>Download</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {backupCodes.map((code, index) => (
                     <div
                       key={index}
-                      className="bg-white dark:bg-slate-900 px-3 py-2 rounded border border-slate-200 dark:border-slate-700 font-mono text-sm text-center text-slate-900 dark:text-white"
+                      className="bg-white dark:bg-slate-900 px-2 sm:px-3 py-2 rounded border border-slate-200 dark:border-slate-700 font-mono text-xs sm:text-sm text-center text-slate-900 dark:text-white"
                     >
                       {code}
                     </div>
@@ -538,7 +538,7 @@ const TwoFactorSetup: React.FC<TwoFactorSetupProps> = ({ isOpen, onClose, onSucc
 
               <button
                 onClick={handleComplete}
-                className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors font-medium"
+                className="w-full bg-indigo-600 text-white py-2.5 sm:py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors font-medium text-sm sm:text-base active:scale-[0.98]"
               >
                 Complete Setup
               </button>

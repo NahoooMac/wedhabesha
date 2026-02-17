@@ -6,12 +6,14 @@ interface TwoFactorVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (authResponse: any) => void;
-  phone: string;
+  phone?: string;
+  email?: string;
   password: string;
 }
 
 interface Verify2FARequest {
-  phone: string;
+  phone?: string;
+  email?: string;
   password: string;
   token: string;
 }
@@ -21,6 +23,7 @@ const TwoFactorVerificationModal: React.FC<TwoFactorVerificationModalProps> = ({
   onClose,
   onSuccess,
   phone,
+  email,
   password
 }) => {
   const [token, setToken] = useState('');
@@ -45,6 +48,7 @@ const TwoFactorVerificationModal: React.FC<TwoFactorVerificationModalProps> = ({
     if (token) {
       verify2FAMutation.mutate({
         phone,
+        email,
         password,
         token
       });

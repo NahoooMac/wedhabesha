@@ -24,7 +24,15 @@ const LoginPage: React.FC = () => {
     if (userToCheck) {
       switch (userToCheck.user_type) {
         case 'VENDOR':
-          navigate('/vendor/dashboard', { replace: true });
+          // Check if there's a pending message action from vendor directory
+          const pendingVendorMessage = localStorage.getItem('pendingVendorMessage');
+          if (pendingVendorMessage) {
+            localStorage.removeItem('pendingVendorMessage');
+            // Redirect to vendor dashboard with Messages tab active
+            navigate('/vendor/dashboard?tab=messages', { replace: true });
+          } else {
+            navigate('/vendor/dashboard', { replace: true });
+          }
           break;
         case 'ADMIN':
           navigate('/admin/dashboard', { replace: true });
@@ -41,7 +49,7 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex w-full font-sans bg-gray-50 dark:bg-gray-900 relative overflow-hidden">
+    <div className="h-screen flex w-full font-sans bg-gray-50 dark:bg-gray-900 relative overflow-hidden">
       
       {/* Background Animated Blobs (visible on the right side mostly) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -49,8 +57,8 @@ const LoginPage: React.FC = () => {
         <div className="absolute bottom-0 right-[20%] w-[500px] h-[500px] bg-purple-200/40 rounded-full blur-[100px] animate-pulse animation-delay-2000 dark:bg-purple-900/20 mix-blend-multiply" />
       </div>
 
-      {/* Left Side - Visual Story */}
-      <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden bg-gray-900">
+      {/* Left Side - Visual Story (Fixed) */}
+      <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden bg-gray-900 h-full">
         <div className="absolute inset-0">
           <img 
             src="/image 2.png"
@@ -99,57 +107,60 @@ const LoginPage: React.FC = () => {
       </div>
 
       {/* Right Side - Login Form Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 relative z-10">
+      <div className="flex-1 relative h-full">
         
-        {/* Navigation */}
-        <div className="absolute top-8 left-8">
+        {/* Fixed Navigation Elements */}
+        <div className="absolute top-8 left-8 z-30">
            <Link to="/" className="group flex items-center gap-2 px-4 py-2 rounded-full bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 backdrop-blur-sm transition-all shadow-sm hover:shadow-md">
              <ArrowLeft className="w-4 h-4 text-gray-600 dark:text-gray-300 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors" />
              <span className="text-sm font-medium text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">Back</span>
            </Link>
         </div>
 
-        <div className="w-full max-w-[440px] animate-slide-up">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white font-bold text-2xl shadow-lg shadow-rose-500/30 mb-6">
-              W
+        {/* Scrollable Form Container */}
+        <div className="absolute inset-0 overflow-y-auto flex flex-col items-center p-6">
+          <div className="w-full max-w-[440px] my-auto pt-24 pb-8 md:py-12 animate-slide-up relative z-10">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white font-bold text-2xl shadow-lg shadow-rose-500/30 mb-6">
+                W
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">Welcome Back</h2>
+              <p className="text-gray-500 dark:text-gray-400">
+                Enter your credentials to access your account
+              </p>
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">Welcome Back</h2>
-            <p className="text-gray-500 dark:text-gray-400">
-              Enter your credentials to access your account
-            </p>
-          </div>
 
-          {/* distinct "Cool Box" Card */}
-          <Card className="border border-white/50 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] dark:shadow-none rounded-3xl overflow-hidden relative group">
-            {/* Subtle glow effect on hover */}
-            <div className="absolute -inset-px bg-gradient-to-r from-rose-500 to-purple-500 rounded-3xl opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none" />
-            
-            <CardContent className="p-8 md:p-10 relative z-10">
-              <LoginForm onSuccess={handleLoginSuccess} />
-            </CardContent>
-          </Card>
+            {/* distinct "Cool Box" Card */}
+            <Card className="border border-white/50 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] dark:shadow-none rounded-3xl overflow-hidden relative group">
+              {/* Subtle glow effect on hover */}
+              <div className="absolute -inset-px bg-gradient-to-r from-rose-500 to-purple-500 rounded-3xl opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none" />
+              
+              <CardContent className="p-8 md:p-10 relative z-10">
+                <LoginForm onSuccess={handleLoginSuccess} />
+              </CardContent>
+            </Card>
 
-          <div className="mt-8 text-center">
-             <p className="text-gray-500 dark:text-gray-400 mb-4">
-               Don't have an account yet?
-             </p>
-             <Link to="/register">
+            <div className="mt-8 text-center">
+              <p className="text-gray-500 dark:text-gray-400 mb-4">
+                Don't have an account yet?
+              </p>
+              <Link to="/register">
                 <button className="w-full py-3.5 px-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold hover:border-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all duration-300 flex items-center justify-center gap-2 group">
                   <span>Create Free Account</span>
                   <ArrowLeft className="w-4 h-4 rotate-180 group-hover:translate-x-1 transition-transform" />
                 </button>
-             </Link>
-             
-             <div className="mt-8 flex justify-center gap-6 text-xs text-gray-400 dark:text-gray-500">
-               <span className="flex items-center gap-1.5 hover:text-rose-500 transition-colors cursor-help">
-                 <ShieldCheck className="w-3.5 h-3.5" /> Secure Connection
-               </span>
-               <span>•</span>
-               <Link to="#" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
-               <span>•</span>
-               <Link to="#" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
-             </div>
+              </Link>
+              
+              <div className="mt-8 flex justify-center gap-6 text-xs text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-1.5 hover:text-rose-500 transition-colors cursor-help">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Secure Connection
+                </span>
+                <span>•</span>
+                <Link to="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
+                <span>•</span>
+                <Link to="/terms" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
+              </div>
+            </div>
           </div>
         </div>
       </div>

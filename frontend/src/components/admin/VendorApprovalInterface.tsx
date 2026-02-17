@@ -55,7 +55,9 @@ interface VendorApprovalInterfaceProps {
 export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = ({ className }) => {
   const [selectedApplication, setSelectedApplication] = useState<VendorApplicationResponse | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [adminMessage, setAdminMessage] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [additionalNotes, setAdditionalNotes] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 10;
@@ -70,13 +72,14 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
 
   // Approve application mutation
   const approveMutation = useMutation({
-    mutationFn: ({ applicationId, notes }: { applicationId: number; notes?: string }) =>
-      adminApi.approveVendorApplication(applicationId, notes),
+    mutationFn: ({ applicationId, adminMessage, notes }: { applicationId: number; adminMessage?: string; notes?: string }) =>
+      adminApi.approveVendorApplication(applicationId, adminMessage, notes),
     onSuccess: () => {
       // Invalidate and refetch the applications list
       queryClient.invalidateQueries({ queryKey: ['vendor-applications'] });
       setSelectedApplication(null);
       setReviewNotes('');
+      setAdminMessage('');
     },
     onError: (error) => {
       console.error('Failed to approve application:', error);
@@ -85,13 +88,14 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
 
   // Reject application mutation
   const rejectMutation = useMutation({
-    mutationFn: ({ applicationId, reason, notes }: { applicationId: number; reason: string; notes?: string }) =>
-      adminApi.rejectVendorApplication(applicationId, reason, notes),
+    mutationFn: ({ applicationId, reason, additionalNotes, notes }: { applicationId: number; reason: string; additionalNotes?: string; notes?: string }) =>
+      adminApi.rejectVendorApplication(applicationId, reason, additionalNotes, notes),
     onSuccess: () => {
       // Invalidate and refetch the applications list
       queryClient.invalidateQueries({ queryKey: ['vendor-applications'] });
       setSelectedApplication(null);
       setRejectionReason('');
+      setAdditionalNotes('');
       setReviewNotes('');
       setShowRejectModal(false);
     },
@@ -113,6 +117,7 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
     if (selectedApplication) {
       approveMutation.mutate({
         applicationId: selectedApplication.id,
+        adminMessage: adminMessage || undefined,
         notes: reviewNotes || undefined
       });
     }
@@ -123,6 +128,7 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
       rejectMutation.mutate({
         applicationId: selectedApplication.id,
         reason: rejectionReason,
+        additionalNotes: additionalNotes || undefined,
         notes: reviewNotes || undefined
       });
     }
@@ -402,16 +408,32 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
               </div>
             </div>
             
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                Message to Vendor (Optional)
+              </label>
+              <textarea
+                value={adminMessage}
+                onChange={(e) => setAdminMessage(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 transition-colors"
+                rows={3}
+                placeholder="Congratulations! Your vendor application has been approved..."
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                This message will be sent to the vendor in their notification.
+              </p>
+            </div>
+
             <div className="mb-6">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-                Review Notes (Optional)
+                Internal Notes (Optional)
               </label>
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 transition-colors"
-                rows={3}
-                placeholder="Add any notes about this approval..."
+                rows={2}
+                placeholder="Add any internal notes about this approval..."
               />
             </div>
 
@@ -437,6 +459,7 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
                 onClick={() => {
                   setSelectedApplication(null);
                   setReviewNotes('');
+                  setAdminMessage('');
                 }}
                 className="px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl font-semibold transition-colors"
               >
@@ -477,18 +500,37 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
                 placeholder="Please provide a reason for rejection..."
                 required
               />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                This will be sent to the vendor in their notification.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                Additional Notes (Optional)
+              </label>
+              <textarea
+                value={additionalNotes}
+                onChange={(e) => setAdditionalNotes(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 transition-colors"
+                rows={2}
+                placeholder="Add any additional notes for the vendor..."
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                These notes will also be included in the notification.
+              </p>
             </div>
 
             <div className="mb-6">
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-                Additional Notes (Optional)
+                Internal Notes (Optional)
               </label>
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 transition-colors"
                 rows={2}
-                placeholder="Add any additional notes..."
+                placeholder="Add any internal notes..."
               />
             </div>
 
@@ -514,6 +556,7 @@ export const VendorApprovalInterface: React.FC<VendorApprovalInterfaceProps> = (
                 onClick={() => {
                   setSelectedApplication(null);
                   setRejectionReason('');
+                  setAdditionalNotes('');
                   setReviewNotes('');
                   setShowRejectModal(false);
                 }}

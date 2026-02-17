@@ -6,30 +6,23 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { vendorApi } from '../../lib/api';
 
-// Couple registration schema
+// Couple registration schema - simplified with single email/phone input
 const coupleRegisterSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  emailOrPhone: z.string().min(1, 'Please enter your email or phone number'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
-  partner1_name: z.string().min(2, 'Partner 1 name is required'),
-  partner2_name: z.string().min(2, 'Partner 2 name is required'),
-  phone: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
 });
 
-// Vendor registration schema
+// Vendor registration schema - simplified with single email/phone input
 const vendorRegisterSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  business_name: z.string().min(2, 'Business name is required'),
+  emailOrPhone: z.string().min(1, 'Please enter your email or phone number'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
-  business_name: z.string().min(2, 'Business name is required'),
-  business_type: z.string().min(1, 'Please select a business type'),
-  phone: z.string().min(10, 'Phone number is required'),
-  location: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -38,23 +31,16 @@ const vendorRegisterSchema = z.object({
 type CoupleRegisterFormData = z.infer<typeof coupleRegisterSchema>;
 type VendorRegisterFormData = z.infer<typeof vendorRegisterSchema>;
 
-interface VendorCategory {
-  value: string;
-  label: string;
-}
-
 interface RegisterFormProps {
   onSuccess?: () => void;
 }
 
 const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
-  const { signUpWithEmail, signInWithGoogle } = useAuth();
+  const { signUpWithEmail, signInWithGoogle, user } = useAuth();
   const [searchParams] = useSearchParams();
   const [error, setError] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [vendorCategories, setVendorCategories] = useState<VendorCategory[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(false);
   
   // Get user type from URL params or localStorage
   const userType = searchParams.get('type') || localStorage.getItem('registerUserType') || 'couple';
@@ -65,39 +51,13 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
     localStorage.setItem('registerUserType', userType);
   }, [userType]);
 
-  // Load vendor categories when component mounts and user is vendor
+  // Call onSuccess when user is loaded after registration
   useEffect(() => {
-    if (isVendor) {
-      loadVendorCategories();
+    if (user && isLoading) {
+      setIsLoading(false);
+      onSuccess?.();
     }
-  }, [isVendor]);
-
-  const loadVendorCategories = async () => {
-    try {
-      setCategoriesLoading(true);
-      const categories = await vendorApi.getCategories();
-      setVendorCategories(categories || []);
-    } catch (error) {
-      console.error('Failed to load vendor categories:', error);
-      // Fallback categories if API fails
-      setVendorCategories([
-        { value: 'photography', label: 'Photography' },
-        { value: 'videography', label: 'Videography' },
-        { value: 'venue', label: 'Venue' },
-        { value: 'catering', label: 'Catering' },
-        { value: 'music', label: 'Music & DJ' },
-        { value: 'flowers', label: 'Flowers & Decoration' },
-        { value: 'transportation', label: 'Transportation' },
-        { value: 'makeup', label: 'Makeup & Beauty' },
-        { value: 'dress', label: 'Wedding Dress' },
-        { value: 'jewelry', label: 'Jewelry' },
-        { value: 'invitations', label: 'Invitations' },
-        { value: 'other', label: 'Other Services' }
-      ]);
-    } finally {
-      setCategoriesLoading(false);
-    }
-  };
+  }, [user, isLoading, onSuccess]);
 
   const {
     register,
@@ -113,14 +73,29 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
       setFieldErrors({});
       setIsLoading(true);
       
-      const { confirmPassword, ...userData } = data;
-      await signUpWithEmail(data.email, data.password, {
-        ...userData,
-        user_type: isVendor ? 'VENDOR' : 'COUPLE'
-      });
-      onSuccess?.();
+      const { confirmPassword, emailOrPhone, ...userData } = data;
+      
+      // Determine if emailOrPhone is an email or phone number
+      const isEmail = emailOrPhone.includes('@');
+      
+      // Only include the field that has a value (don't send empty strings)
+      const authData = isEmail 
+        ? { email: emailOrPhone }
+        : { phone: emailOrPhone };
+      
+      await signUpWithEmail(
+        authData.email || '', 
+        data.password, 
+        {
+          ...userData,
+          ...authData,
+          user_type: isVendor ? 'VENDOR' : 'COUPLE'
+        }
+      );
+      // Don't call onSuccess here - let the useEffect handle it when user is loaded
     } catch (err: any) {
       console.error('Registration error:', err);
+      setIsLoading(false); // Reset loading on error
       
       // Handle validation errors from API
       if (err.details && Array.isArray(err.details)) {
@@ -135,8 +110,6 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
       } else {
         setError(err.message || 'Failed to create account');
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -168,10 +141,10 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 pt-10">
         {isVendor ? (
           <>
-            {/* Vendor Form Fields */}
+            {/* Vendor Form Fields - Simplified */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Business Name
@@ -187,128 +160,42 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Business Type
-              </label>
-              <div className="relative">
-                <select
-                  {...register('business_type')}
-                  disabled={isLoading || categoriesLoading}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-gray-50/50 appearance-none cursor-pointer"
-                >
-                  <option value="">
-                    {categoriesLoading ? 'Loading categories...' : 'Select your business type'}
-                  </option>
-                  {vendorCategories.map((category) => (
-                    <option key={category.value} value={category.value}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-                {/* Custom dropdown arrow */}
-                <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </div>
-              {((errors as any).business_type?.message || fieldErrors.business_type) && (
-                <p className="mt-1 text-sm text-red-600">
-                  {(errors as any).business_type?.message || fieldErrors.business_type}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Phone Number
+                Email or Phone Number
               </label>
               <Input
-                type="tel"
-                placeholder="Enter your phone number"
-                {...register('phone')}
-                error={(errors as any).phone?.message || fieldErrors.phone}
+                type="text"
+                placeholder="Enter your email or phone number"
+                {...register('emailOrPhone')}
+                error={(errors as any).emailOrPhone?.message || fieldErrors.emailOrPhone}
                 disabled={isLoading}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-gray-50/50"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Location (Optional)
-              </label>
-              <Input
-                placeholder="Enter your location"
-                {...register('location')}
-                error={(errors as any).location?.message || fieldErrors.location}
-                disabled={isLoading}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-gray-50/50"
-              />
+              <p className="mt-1 text-xs text-gray-500">
+                You can use either email or phone number to sign up
+              </p>
             </div>
           </>
         ) : (
           <>
-            {/* Couple Form Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Partner 1 Name
-                </label>
-                <Input
-                  placeholder="First partner's name"
-                  {...register('partner1_name')}
-                  error={(errors as any).partner1_name?.message || fieldErrors.partner1_name}
-                  disabled={isLoading}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-gray-50/50"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Partner 2 Name
-                </label>
-                <Input
-                  placeholder="Second partner's name"
-                  {...register('partner2_name')}
-                  error={(errors as any).partner2_name?.message || fieldErrors.partner2_name}
-                  disabled={isLoading}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-gray-50/50"
-                />
-              </div>
-            </div>
-
+            {/* Couple Form Fields - Simplified with single input */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Phone (Optional)
+                Email or Phone Number
               </label>
               <Input
-                type="tel"
-                placeholder="Enter your phone number"
-                {...register('phone')}
-                error={(errors as any).phone?.message || fieldErrors.phone}
+                type="text"
+                placeholder="Enter your email or phone number"
+                {...register('emailOrPhone')}
+                error={(errors as any).emailOrPhone?.message || fieldErrors.emailOrPhone}
                 disabled={isLoading}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all bg-gray-50/50"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                You can use either email or phone number to sign up
+              </p>
             </div>
           </>
         )}
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Email Address
-          </label>
-          <Input
-            type="email"
-            placeholder="Enter your email"
-            {...register('email')}
-            error={(errors as any).email?.message || fieldErrors.email}
-            disabled={isLoading}
-            className={`w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 transition-all bg-gray-50/50 ${
-              isVendor 
-                ? 'focus:ring-purple-500 focus:border-purple-500' 
-                : 'focus:ring-rose-500 focus:border-rose-500'
-            }`}
-          />
-        </div>
 
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">

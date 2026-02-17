@@ -8,14 +8,11 @@ class OTPService {
     this.MAX_ATTEMPTS = 3;
     this.RATE_LIMIT_MINUTES = 5; // Minimum time between OTP requests
     
-    // Test phone numbers that use fixed OTP codes
-    this.testPhoneNumbers = [
-      '+251901959439',
-      '+251937105764'
-    ];
+    // Disable test phone numbers - all users get random OTPs
+    this.testPhoneNumbers = [];
     
-    // Fixed OTP code for test numbers
-    this.testOTPCode = '123456';
+    // No fixed OTP code - always generate random
+    this.testOTPCode = null;
   }
 
   // Check if phone number is a test number
@@ -36,12 +33,9 @@ class OTPService {
     return crypto.randomInt(100000, 999999).toString();
   }
 
-  // Generate OTP code (test-aware)
+  // Generate OTP code (always random)
   generateOTPCode(phone = null) {
-    if (phone && this.isTestPhoneNumber(phone)) {
-      console.log(`📱 [TEST MODE] Using fixed OTP code for test number: ${phone}`);
-      return this.testOTPCode;
-    }
+    // Always generate random OTP
     return this.generateOTP();
   }
 
@@ -73,8 +67,8 @@ class OTPService {
         rateLimitCheck = await query(`
           SELECT COUNT(*) as count 
           FROM otp_codes 
-          WHERE email = $1
-          AND otp_type = $2 
+          WHERE email = ?
+          AND otp_type = ? 
           AND created_at > datetime('now', '-${this.RATE_LIMIT_MINUTES} minutes')
         `, [identifier, otpType]);
       } else {
@@ -83,13 +77,13 @@ class OTPService {
           SELECT COUNT(*) as count 
           FROM otp_codes 
           WHERE user_id IN (
-            SELECT user_id FROM couples WHERE phone = $1
+            SELECT user_id FROM couples WHERE phone = ?
             UNION
-            SELECT user_id FROM vendors WHERE phone = $1
+            SELECT user_id FROM vendors WHERE phone = ?
           )
-          AND otp_type = $2 
+          AND otp_type = ? 
           AND created_at > datetime('now', '-${this.RATE_LIMIT_MINUTES} minutes')
-        `, [identifier, otpType]);
+        `, [identifier, identifier, otpType]);
       }
 
       const recentRequests = parseInt(rateLimitCheck.rows[0].count);
@@ -141,8 +135,24 @@ class OTPService {
         };
       }
 
-      // Check if user exists by phone number
-      const userResult = await query('SELECT id, phone, email FROM users WHERE phone = $1', [phone]);
+      // Check if user exists by phone number (check couples and vendors tables)
+      let userResult = await query(`
+        SELECT u.id, u.email, c.phone 
+        FROM users u
+        JOIN couples c ON u.id = c.user_id
+        WHERE c.phone = ?
+      `, [phone]);
+
+      // If not found in couples, check vendors
+      if (userResult.rows.length === 0) {
+        userResult = await query(`
+          SELECT u.id, u.email, v.phone 
+          FROM users u
+          JOIN vendors v ON u.id = v.user_id
+          WHERE v.phone = ?
+        `, [phone]);
+      }
+
       if (userResult.rows.length === 0) {
         // Don't reveal if phone exists or not for security
         return {
@@ -159,13 +169,13 @@ class OTPService {
       // Store OTP in database
       await query(`
         INSERT INTO otp_codes (user_id, email, otp_code, otp_type, expires_at, ip_address, user_agent)
-        VALUES ($1, $2, $3, 'PASSWORD_RESET', $4, $5, $6)
+        VALUES (?, ?, ?, 'PASSWORD_RESET', ?, ?, ?)
       `, [user.id, user.email, otpCode, expiresAt.toISOString(), ipAddress, userAgent]);
 
       // Store password reset token
       await query(`
         INSERT INTO password_reset_tokens (user_id, email, token, otp_code, expires_at, ip_address, user_agent)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [user.id, user.email, resetToken, otpCode, expiresAt.toISOString(), ipAddress, userAgent]);
 
       // Send OTP via SMS
@@ -208,15 +218,22 @@ class OTPService {
   // Verify OTP for password reset
   async verifyPasswordResetOTP(resetToken, otpCode, ipAddress = null) {
     try {
+      console.log('=== Verifying Password Reset OTP ===');
+      console.log('Reset Token:', resetToken);
+      console.log('Provided OTP Code:', otpCode, 'Type:', typeof otpCode);
+      
       // Find the reset token
       const tokenResult = await query(`
         SELECT prt.*, u.id as user_id, u.email 
         FROM password_reset_tokens prt
         JOIN users u ON prt.user_id = u.id
-        WHERE prt.token = $1 AND prt.is_used = 0 AND prt.expires_at > datetime('now')
+        WHERE prt.token = ? AND prt.is_used = 0 AND prt.expires_at > datetime('now')
       `, [resetToken]);
 
+      console.log('Token result rows:', tokenResult.rows.length);
+
       if (tokenResult.rows.length === 0) {
+        console.log('❌ Invalid or expired reset token');
         return {
           success: false,
           message: 'Invalid or expired reset token.'
@@ -224,33 +241,46 @@ class OTPService {
       }
 
       const resetData = tokenResult.rows[0];
+      console.log('Stored OTP Code:', resetData.otp_code, 'Type:', typeof resetData.otp_code);
 
-      // Verify OTP code
-      if (resetData.otp_code !== otpCode) {
+      // Verify OTP code - ensure both are strings and trimmed
+      const storedOTP = String(resetData.otp_code).trim();
+      const providedOTP = String(otpCode).trim();
+      
+      console.log('Comparing OTPs:');
+      console.log('  Stored (trimmed):', storedOTP);
+      console.log('  Provided (trimmed):', providedOTP);
+      console.log('  Match:', storedOTP === providedOTP);
+
+      if (storedOTP !== providedOTP) {
         // Log failed attempt
         await this.logSecurityEvent(resetData.user_id, 'password_reset_otp_failed', {
           ip_address: ipAddress,
-          provided_otp: otpCode
+          provided_otp: providedOTP,
+          stored_otp: storedOTP
         });
 
+        console.log('❌ OTP verification failed');
         return {
           success: false,
           message: 'Invalid verification code.'
         };
       }
 
+      console.log('✅ OTP verified successfully');
+
       // Mark OTP as used
       await query(`
         UPDATE password_reset_tokens 
         SET is_used = 1, used_at = datetime('now') 
-        WHERE token = $1
+        WHERE token = ?
       `, [resetToken]);
 
       await query(`
         UPDATE otp_codes 
         SET is_used = 1, used_at = datetime('now') 
-        WHERE user_id = $1 AND otp_code = $2 AND otp_type = 'PASSWORD_RESET'
-      `, [resetData.user_id, otpCode]);
+        WHERE user_id = ? AND otp_code = ? AND otp_type = 'PASSWORD_RESET'
+      `, [resetData.user_id, storedOTP]);
 
       // Log successful verification
       await this.logSecurityEvent(resetData.user_id, 'password_reset_otp_verified', {
@@ -292,7 +322,7 @@ class OTPService {
       // If userId is provided, get user email for database storage
       let userEmail = null;
       if (userId) {
-        const userResult = await query('SELECT email FROM users WHERE id = $1', [userId]);
+        const userResult = await query('SELECT email FROM users WHERE id = ?', [userId]);
         if (userResult.rows.length > 0) {
           userEmail = userResult.rows[0].email;
         }
@@ -301,7 +331,7 @@ class OTPService {
       // Store OTP in database
       await query(`
         INSERT INTO otp_codes (user_id, email, otp_code, otp_type, expires_at, ip_address, user_agent)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [userId, userEmail || phone, otpCode, otpType, expiresAt.toISOString(), ipAddress, userAgent]);
 
       // Prepare SMS message based on OTP type
@@ -357,9 +387,9 @@ class OTPService {
     try {
       const otpResult = await query(`
         SELECT * FROM otp_codes 
-        WHERE user_id = $1 
-        AND otp_code = $2 
-        AND otp_type = $3 
+        WHERE user_id = ? 
+        AND otp_code = ? 
+        AND otp_type = ? 
         AND is_used = 0 
         AND expires_at > datetime('now')
         ORDER BY created_at DESC 
@@ -371,7 +401,7 @@ class OTPService {
         await query(`
           UPDATE otp_codes 
           SET attempts = attempts + 1 
-          WHERE user_id = $1 AND otp_type = $2 AND is_used = 0
+          WHERE user_id = ? AND otp_type = ? AND is_used = 0
         `, [userId, otpType]);
 
         return {
@@ -394,7 +424,7 @@ class OTPService {
       await query(`
         UPDATE otp_codes 
         SET is_used = 1, used_at = datetime('now') 
-        WHERE id = $1
+        WHERE id = ?
       `, [otp.id]);
 
       return {
@@ -417,13 +447,13 @@ class OTPService {
       const backupCodes = this.generateBackupCodes();
       
       // Delete existing backup codes
-      await query('DELETE FROM two_factor_backup_codes WHERE user_id = $1', [userId]);
+      await query('DELETE FROM two_factor_backup_codes WHERE user_id = ?', [userId]);
       
       // Store new backup codes
       for (const code of backupCodes) {
         await query(`
           INSERT INTO two_factor_backup_codes (user_id, code)
-          VALUES ($1, $2)
+          VALUES (?, ?)
         `, [userId, code]);
       }
 
@@ -444,15 +474,40 @@ class OTPService {
   // Verify 2FA backup code
   async verifyBackupCode(userId, backupCode) {
     try {
+      // Normalize backup code format (uppercase, with dash)
+      const normalizedCode = backupCode.toUpperCase().trim();
+      
+      console.log('=== Verifying Backup Code ===');
+      console.log('User ID:', userId);
+      console.log('Original code:', backupCode);
+      console.log('Normalized code:', normalizedCode);
+      
       const codeResult = await query(`
         SELECT * FROM two_factor_backup_codes 
-        WHERE user_id = $1 AND code = $2 AND is_used = 0
-      `, [userId, backupCode]);
+        WHERE user_id = ? AND code = ? AND is_used = 0
+      `, [userId, normalizedCode]);
+
+      console.log('Found codes:', codeResult.rows.length);
 
       if (codeResult.rows.length === 0) {
+        // Check if code exists but is already used
+        const usedCodeResult = await query(`
+          SELECT * FROM two_factor_backup_codes 
+          WHERE user_id = ? AND code = ?
+        `, [userId, normalizedCode]);
+        
+        if (usedCodeResult.rows.length > 0) {
+          console.log('❌ Backup code already used');
+          return {
+            success: false,
+            message: 'This backup code has already been used.'
+          };
+        }
+        
+        console.log('❌ Invalid backup code');
         return {
           success: false,
-          message: 'Invalid or already used backup code.'
+          message: 'Invalid backup code.'
         };
       }
 
@@ -460,13 +515,15 @@ class OTPService {
       await query(`
         UPDATE two_factor_backup_codes 
         SET is_used = 1, used_at = datetime('now') 
-        WHERE user_id = $1 AND code = $2
-      `, [userId, backupCode]);
+        WHERE user_id = ? AND code = ?
+      `, [userId, normalizedCode]);
 
       // Log backup code usage
       await this.logSecurityEvent(userId, '2fa_backup_code_used', {
-        backup_code: backupCode.substring(0, 4) + '****' // Partial code for logging
+        backup_code: normalizedCode.substring(0, 4) + '****' // Partial code for logging
       });
+
+      console.log('✅ Backup code verified successfully');
 
       return {
         success: true,
@@ -487,7 +544,7 @@ class OTPService {
     try {
       await query(`
         INSERT INTO security_events (user_id, event_type, event_description, ip_address, user_agent, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES (?, ?, ?, ?, ?, ?)
       `, [
         userId,
         eventType,
@@ -561,10 +618,10 @@ class OTPService {
       if (otpType.startsWith('2FA_')) {
         // For 2FA OTPs, first get ALL user_ids from couples/vendors tables, then find OTP for any of them
         const userIdResult = await query(`
-          SELECT user_id FROM couples WHERE phone = $1
+          SELECT user_id FROM couples WHERE phone = ?
           UNION
-          SELECT user_id FROM vendors WHERE phone = $1
-        `, [phone]);
+          SELECT user_id FROM vendors WHERE phone = ?
+        `, [phone, phone]);
         
         if (userIdResult.rows.length === 0) {
           return {
@@ -576,13 +633,13 @@ class OTPService {
         
         // Check for OTP records for ANY of the user_ids (since multiple users might share the same phone)
         const userIds = userIdResult.rows.map(row => row.user_id);
-        const placeholders = userIds.map((_, index) => `$${index + 1}`).join(',');
+        const placeholders = userIds.map(() => '?').join(',');
         
         otpResult = await query(`
           SELECT * FROM otp_codes
           WHERE user_id IN (${placeholders})
-          AND otp_code = $${userIds.length + 1}
-          AND otp_type = $${userIds.length + 2}
+          AND otp_code = ?
+          AND otp_type = ?
           AND is_used = 0 
           AND expires_at > datetime('now')
           ORDER BY created_at DESC 
@@ -592,9 +649,9 @@ class OTPService {
         // For other OTP types, use email field (which might contain phone)
         otpResult = await query(`
           SELECT * FROM otp_codes 
-          WHERE email = $1 
-          AND otp_code = $2 
-          AND otp_type = $3
+          WHERE email = ? 
+          AND otp_code = ? 
+          AND otp_type = ?
           AND is_used = 0 
           AND expires_at > datetime('now')
           ORDER BY created_at DESC 
@@ -625,7 +682,7 @@ class OTPService {
       await query(`
         UPDATE otp_codes 
         SET is_used = 1, used_at = datetime('now') 
-        WHERE id = $1
+        WHERE id = ?
       `, [otp.id]);
 
       return {

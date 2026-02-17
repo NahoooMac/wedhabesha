@@ -49,8 +49,12 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [backupCodeInput, setBackupCodeInput] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [backupCode, setBackupCode] = useState('');
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'sms' | 'authenticator'>('authenticator');
   
   const [identifierType, setIdentifierType] = useState<'email' | 'phone' | null>(null);
   const [resetToken, setResetToken] = useState('');
@@ -83,13 +87,6 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
     const errorMessage = error.message || 'An error occurred';
     const lowerMessage = errorMessage.toLowerCase();
     
-    if (lowerMessage.includes('2fa') || 
-        lowerMessage.includes('verification') ||
-        lowerMessage.includes('otp') ||
-        lowerMessage.includes('code')) {
-      return '2FA verification failed. Please check your code and try again.';
-    }
-    
     if (lowerMessage.includes('validation') || 
         lowerMessage.includes('required') ||
         lowerMessage.includes('format')) {
@@ -110,6 +107,13 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
         lowerMessage.includes('email') ||
         lowerMessage.includes('phone')) {
       return 'Invalid credentials. Please check your email/phone and password.';
+    }
+    
+    if (lowerMessage.includes('2fa') || 
+        lowerMessage.includes('verification') ||
+        lowerMessage.includes('otp') ||
+        lowerMessage.includes('code')) {
+      return 'Verification code is incorrect. Please try again.';
     }
     
     return errorMessage;
@@ -159,6 +163,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
         const response = await signInWithEmail(identifier, password);
 
         if (response.requires2FA) {
+          setTwoFactorMethod(response.twoFactorMethod || 'authenticator');
           setMode('TWO_FACTOR');
         } else if (response.user) {
           if (onSuccess) onSuccess(response.user);
@@ -167,6 +172,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
         const response = await signInWithPhone(identifier, password);
 
         if (response.requires2FA) {
+          setTwoFactorMethod(response.twoFactorMethod || 'authenticator');
           setMode('TWO_FACTOR');
         } else if (response.user) {
           if (onSuccess) onSuccess(response.user);
@@ -182,8 +188,9 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
   };
 
   /**
-   * Handles 2FA verification using the OTP code entered by the user.
+   * Handles 2FA verification using the OTP code or backup code entered by the user.
    * Uses AuthContext.signInWith2FA to complete authentication.
+   * Supports both email and phone login with 2FA.
    * 
    * @throws Error if 2FA verification fails
    */
@@ -192,15 +199,33 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
     setError('');
     
     try {
-      const otpCode = otp.join('');
+      let verificationCode = '';
       
-      if (identifierType === 'phone') {
-        const user = await signInWith2FA(identifier, password, otpCode);
+      if (useBackupCode) {
+        // Use backup code (8 characters with dash: XXXX-XXXX)
+        verificationCode = backupCodeInput.trim();
         
-        if (onSuccess) onSuccess(user);
+        if (verificationCode.length < 8) {
+          setError('Backup code must be 8 characters (format: XXXX-XXXX)');
+          setIsLoading(false);
+          return;
+        }
       } else {
-        setError('2FA verification not supported for email login yet');
+        // Use OTP code (6 digits)
+        verificationCode = otp.join('');
+        
+        if (verificationCode.length < 6) {
+          setError('Please enter the complete verification code');
+          setIsLoading(false);
+          return;
+        }
       }
+      
+      // Support both email and phone login with 2FA
+      // Pass isEmail parameter based on identifierType
+      const user = await signInWith2FA(identifier, password, verificationCode, identifierType === 'email');
+      
+      if (onSuccess) onSuccess(user);
     } catch (error: any) {
       setError(categorizeError(error));
     } finally {
@@ -388,7 +413,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
 
   if (mode === 'LOGIN') {
     return (
-      <form onSubmit={handleLogin} className="space-y-5 animate-fade-in">
+      <form onSubmit={handleLogin} className="space-y-5 animate-fade-in pt-10">
         {renderError()}
         
         <div className="space-y-1.5">
@@ -410,7 +435,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
           </div>
           {identifierType && (
             <p className="text-xs text-gray-500 ml-1">
-              {identifierType === 'email' ? '📧 Email login' : '📱 Phone login (requires 2FA)'}
+              {identifierType === 'email' ? '📧 Email login' : '📱 Phone login'}
             </p>
           )}
         </div>
@@ -616,10 +641,19 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
   }
 
   if (mode === 'TWO_FACTOR') {
+    const methodText = twoFactorMethod === 'sms' 
+      ? 'A 6-digit code will be sent to your phone via SMS'
+      : 'Enter the 6-digit code from your authenticator app';
+    
     return (
       <div className="space-y-6 animate-fade-in">
         <button 
-          onClick={() => setMode('LOGIN')}
+          onClick={() => {
+            setMode('LOGIN');
+            setUseBackupCode(false);
+            setBackupCodeInput('');
+            setOtp(['', '', '', '', '', '']);
+          }}
           className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors mb-2"
         >
           <ChevronLeft className="w-4 h-4" /> Back to Login
@@ -633,34 +667,75 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
           </div>
           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Two-Factor Authentication</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Enter the 6-digit code from your authenticator app
+            {methodText}
           </p>
         </div>
 
-        <form onSubmit={handleOtpSubmit}>
-          <div className="flex justify-center gap-2 mb-6">
-              {otp.map((data, index) => (
-                  <input
-                      key={index}
-                      id={`otp-input-${index}`}
-                      type="text"
-                      maxLength={1}
-                      value={data}
-                      onChange={e => handleOtpChange(e.target, index)}
-                      onFocus={e => e.target.select()}
-                      className="w-10 h-12 text-center text-xl font-bold border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:text-white transition-colors"
-                  />
-              ))}
-          </div>
+        {!useBackupCode ? (
+          <form onSubmit={handleOtpSubmit}>
+            <div className="flex justify-center gap-2 mb-6">
+                {otp.map((data, index) => (
+                    <input
+                        key={index}
+                        id={`otp-input-${index}`}
+                        type="text"
+                        maxLength={1}
+                        value={data}
+                        onChange={e => handleOtpChange(e.target, index)}
+                        onFocus={e => e.target.select()}
+                        className="w-10 h-12 text-center text-xl font-bold border-2 border-gray-200 dark:border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:text-white transition-colors"
+                    />
+                ))}
+            </div>
 
+            <button
+              type="submit"
+              disabled={isLoading || otp.join('').length < 6}
+              className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Sign In"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={(e) => { e.preventDefault(); handle2FAVerification(); }}>
+            <div className="mb-6">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-1 mb-2 block">
+                Backup Code (8 characters)
+              </label>
+              <input
+                type="text"
+                value={backupCodeInput}
+                onChange={(e) => setBackupCodeInput(e.target.value.toUpperCase())}
+                placeholder="XXXX-XXXX"
+                maxLength={9}
+                className="w-full px-4 py-3.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all outline-none dark:text-white font-mono text-center text-lg tracking-wider"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || backupCodeInput.length < 8}
+              className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify Backup Code"}
+            </button>
+          </form>
+        )}
+
+        <div className="text-center">
           <button
-            type="submit"
-            disabled={isLoading || otp.join('').length < 6}
-            className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            type="button"
+            onClick={() => {
+              setUseBackupCode(!useBackupCode);
+              setError('');
+              setOtp(['', '', '', '', '', '']);
+              setBackupCodeInput('');
+            }}
+            className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium"
           >
-            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Sign In"}
+            {useBackupCode ? 'Use verification code instead' : 'Use backup code instead'}
           </button>
-        </form>
+        </div>
       </div>
     );
   }
@@ -675,28 +750,34 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess }) => {
             <CheckCircle2 className="w-6 h-6 text-green-600 dark:text-green-400" />
           </div>
           <h3 className="text-xl font-bold text-gray-900 dark:text-white">Set New Password</h3>
-          <p className="text-sm text-gray-500 mt-1">Create a strong password to secure your account.</p>
+          <p className="text-sm text-gray-500 mt-1">Password must be at least 8 characters long.</p>
         </div>
 
         <form onSubmit={handlePasswordReset} className="space-y-4">
           <div className="space-y-1.5">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">
+              New Password
+            </label>
              <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="w-full pl-4 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all outline-none dark:text-white"
-              placeholder="New Password"
+              placeholder="Enter new password"
               required
               minLength={8}
             />
           </div>
           <div className="space-y-1.5">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 ml-1">
+              Confirm Password
+            </label>
              <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full pl-4 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all outline-none dark:text-white"
-              placeholder="Confirm Password"
+              placeholder="Confirm new password"
               required
               minLength={8}
             />

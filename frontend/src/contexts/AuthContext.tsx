@@ -232,14 +232,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const signInWith2FA = async (phone: string, password: string, token: string) => {
+  const signInWith2FA = async (identifier: string, password: string, token: string, isEmail: boolean = false) => {
     try {
       setLoading(true);
-      const response = await apiClient.post<AuthResponse>('/api/v1/auth/2fa/verify', {
-        phone,
+      const requestData: any = {
         password,
         token,
-      });
+      };
+      
+      // Add either email or phone based on identifier type
+      if (isEmail) {
+        requestData.email = identifier;
+      } else {
+        requestData.phone = identifier;
+      }
+      
+      console.log('=== 2FA Verification Request (Frontend) ===');
+      console.log('Identifier:', identifier);
+      console.log('Is Email:', isEmail);
+      console.log('Request Data:', JSON.stringify(requestData, null, 2));
+      
+      const response = await apiClient.post<AuthResponse>('/api/v1/auth/2fa/verify', requestData);
       
       localStorage.setItem('jwt_token', response.access_token);
       setCookie('jwt_token', response.access_token, 7); // Store in cookie for 7 days

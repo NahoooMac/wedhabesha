@@ -101,6 +101,84 @@ router.get('/categories', (req, res) => {
   res.json(categories);
 });
 
+// Get category summary with active vendors and sample images
+router.get('/categories/summary', async (req, res) => {
+  try {
+    // Define the main categories we want to display
+    const mainCategories = ['photography', 'catering', 'music', 'flowers', 'transportation', 'makeup'];
+    
+    const categorySummary = [];
+
+    for (const category of mainCategories) {
+      // Get count of active vendors in this category
+      // Active vendors are those with user accounts that have is_active = 1
+      const countResult = await query(`
+        SELECT COUNT(DISTINCT v.id) as count
+        FROM vendors v
+        INNER JOIN users u ON v.user_id = u.id
+        WHERE v.category = ? AND u.is_active = 1
+      `, [category]);
+
+      const count = countResult.rows[0].count || 0;
+
+      // Get a sample vendor image from this category (first business photo or portfolio photo)
+      const imageResult = await query(`
+        SELECT v.business_photos, v.portfolio_photos
+        FROM vendors v
+        INNER JOIN users u ON v.user_id = u.id
+        WHERE v.category = ? AND u.is_active = 1
+        AND (v.business_photos IS NOT NULL OR v.portfolio_photos IS NOT NULL)
+        ORDER BY v.rating DESC, v.created_at DESC
+        LIMIT 1
+      `, [category]);
+
+      let sampleImage = null;
+      if (imageResult.rows.length > 0) {
+        const vendor = imageResult.rows[0];
+        
+        // Try to get first business photo
+        try {
+          const businessPhotos = vendor.business_photos ? JSON.parse(vendor.business_photos) : [];
+          if (businessPhotos.length > 0) {
+            sampleImage = businessPhotos[0];
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+
+        // If no business photo, try portfolio photo
+        if (!sampleImage) {
+          try {
+            const portfolioPhotos = vendor.portfolio_photos ? JSON.parse(vendor.portfolio_photos) : [];
+            if (portfolioPhotos.length > 0) {
+              sampleImage = portfolioPhotos[0];
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+
+      categorySummary.push({
+        category: category,
+        count: count,
+        image: sampleImage
+      });
+    }
+
+    res.json({
+      categories: categorySummary
+    });
+
+  } catch (error) {
+    console.error('Get category summary error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to get category summary'
+    });
+  }
+});
+
 // Search/List vendors (public endpoint)
 router.get('/', async (req, res) => {
   try {
@@ -118,13 +196,16 @@ router.get('/', async (req, res) => {
     let whereConditions = [];
     let queryParams = [];
 
+    // Only show vendors with active user accounts
+    whereConditions.push('u.is_active = 1');
+
     // Only show verified vendors by default (or all if specifically requested)
     if (verified_only === 'true') {
       whereConditions.push('v.is_verified = 1');
     } else if (verified_only === 'false') {
       whereConditions.push('v.is_verified = 0');
     }
-    // If verified_only is not specified, show all vendors
+    // If verified_only is not specified, show all vendors (but still only active users)
 
     // Category filter
     if (category) {
@@ -174,6 +255,7 @@ router.get('/', async (req, res) => {
              v.additional_info, v.verification_date, v.verification_history,
              v.latitude, v.longitude, v.map_address, v.phone_verified, v.verified_phone
       FROM vendors v
+      INNER JOIN users u ON v.user_id = u.id
       ${whereClause}
       ORDER BY v.is_verified DESC, v.rating DESC, v.created_at DESC
       LIMIT ? OFFSET ?
@@ -183,6 +265,7 @@ router.get('/', async (req, res) => {
     const countResult = await query(`
       SELECT COUNT(*) as total
       FROM vendors v
+      INNER JOIN users u ON v.user_id = u.id
       ${whereClause}
     `, queryParams.slice(0, -2)); // Remove limit and offset for count query
 

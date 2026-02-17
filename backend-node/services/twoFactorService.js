@@ -3,7 +3,7 @@ const QRCode = require('qrcode');
 const { query } = require('../config/database');
 const otpService = require('./otpService');
 const smsService = require('./smsService');
-
+const otp = Math.floor(100000 + Math.random() * 900000);
 class TwoFactorService {
   constructor() {
     this.serviceName = 'Wedding Platform';
@@ -22,8 +22,8 @@ class TwoFactorService {
       // Store the secret temporarily (not enabled yet)
       await query(`
         UPDATE users 
-        SET two_factor_secret = $1 
-        WHERE id = $2
+        SET two_factor_secret = ? 
+        WHERE id = ?
       `, [secret.base32, userId]);
 
       return {
@@ -55,7 +55,7 @@ class TwoFactorService {
       await query(`
         UPDATE users 
         SET two_factor_method = 'sms'
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       return {
@@ -125,7 +125,7 @@ class TwoFactorService {
       const userResult = await query(`
         SELECT two_factor_secret, two_factor_enabled, email, two_factor_method
         FROM users 
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       if (userResult.rows.length === 0) {
@@ -202,9 +202,9 @@ class TwoFactorService {
       // Enable 2FA with the chosen method
       await query(`
         UPDATE users 
-        SET two_factor_enabled = 1, two_factor_method = $2
-        WHERE id = $1
-      `, [userId, method]);
+        SET two_factor_enabled = ?, two_factor_method = ?
+        WHERE id = ?
+      `, [1, method, userId]);
 
       // Send backup codes via SMS (only if phone number is available)
       const methodText = method === 'sms' ? 'SMS' : 'Authenticator App';
@@ -261,9 +261,9 @@ class TwoFactorService {
     try {
       // Verify current password
       const userResult = await query(`
-        SELECT password_hash, two_factor_secret, two_factor_enabled, email 
+        SELECT password_hash, two_factor_secret, two_factor_enabled, email, two_factor_method 
         FROM users 
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       if (userResult.rows.length === 0) {
@@ -292,14 +292,31 @@ class TwoFactorService {
         };
       }
 
-      // Verify TOTP token
-      const isValidToken = this.verifyToken(user.two_factor_secret, totpToken);
+      // Verify token based on 2FA method
+      let isValidToken = false;
+      
+      if (user.two_factor_method === 'sms') {
+        // For SMS method, verify the OTP code
+        console.log('Verifying SMS OTP for 2FA disable...');
+        const otpResult = await otpService.verifyOTP(phone, totpToken, '2FA_DISABLE');
+        isValidToken = otpResult.success;
+        
+        if (!isValidToken) {
+          console.log('SMS OTP verification failed:', otpResult.message);
+        }
+      } else {
+        // For authenticator method, verify TOTP token
+        console.log('Verifying TOTP token for 2FA disable...');
+        isValidToken = this.verifyToken(user.two_factor_secret, totpToken);
+      }
+      
       if (!isValidToken) {
         // Log failed attempt
         await otpService.logSecurityEvent(userId, '2fa_disable_failed', {
           ip_address: ipAddress,
           user_agent: userAgent,
-          reason: 'invalid_totp_token'
+          reason: 'invalid_verification_code',
+          method: user.two_factor_method
         });
 
         return {
@@ -311,14 +328,14 @@ class TwoFactorService {
       // Disable 2FA and clear secret
       await query(`
         UPDATE users 
-        SET two_factor_enabled = 0, two_factor_secret = NULL 
-        WHERE id = $1
-      `, [userId]);
+        SET two_factor_enabled = ?, two_factor_secret = NULL, two_factor_method = NULL 
+        WHERE id = ?
+      `, [0, userId]);
 
       // Delete backup codes
       await query(`
         DELETE FROM two_factor_backup_codes 
-        WHERE user_id = $1
+        WHERE user_id = ?
       `, [userId]);
 
       // Send security alert via SMS
@@ -340,7 +357,8 @@ class TwoFactorService {
       // Log security event
       await otpService.logSecurityEvent(userId, '2fa_disabled', {
         ip_address: ipAddress,
-        user_agent: userAgent
+        user_agent: userAgent,
+        method: user.two_factor_method
       });
 
       return {
@@ -360,14 +378,21 @@ class TwoFactorService {
   // Verify 2FA during login (supports both methods)
   async verifyLogin2FA(userId, token, ipAddress = null, userAgent = null) {
     try {
-      // Get user's 2FA settings and phone
+      console.log('=== Verify Login 2FA ===');
+      console.log('User ID:', userId);
+      console.log('Token:', token);
+      console.log('Token length:', token.length);
+      console.log('Has dash:', token.includes('-'));
+      
+      // Get user's 2FA settings
       const userResult = await query(`
-        SELECT two_factor_secret, two_factor_enabled, two_factor_method, email, phone
+        SELECT two_factor_secret, two_factor_enabled, two_factor_method, email
         FROM users 
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       if (userResult.rows.length === 0) {
+        console.log('❌ User not found');
         return {
           success: false,
           message: 'User not found.'
@@ -375,6 +400,8 @@ class TwoFactorService {
       }
 
       const user = userResult.rows[0];
+      console.log('User 2FA enabled:', user.two_factor_enabled);
+      console.log('User 2FA method:', user.two_factor_method);
 
       if (!user.two_factor_enabled) {
         return {
@@ -383,8 +410,33 @@ class TwoFactorService {
         };
       }
 
+      // Get phone number from couples or vendors table
+      let phone = null;
+      try {
+        const coupleResult = await query(`SELECT phone FROM couples WHERE user_id = ?`, [userId]);
+        if (coupleResult.rows.length > 0 && coupleResult.rows[0].phone) {
+          phone = coupleResult.rows[0].phone;
+        }
+      } catch (error) {
+        console.log('Error checking couples table:', error.message);
+      }
+      
+      if (!phone) {
+        try {
+          const vendorResult = await query(`SELECT phone FROM vendors WHERE user_id = ?`, [userId]);
+          if (vendorResult.rows.length > 0 && vendorResult.rows[0].phone) {
+            phone = vendorResult.rows[0].phone;
+          }
+        } catch (error) {
+          console.log('Error checking vendors table:', error.message);
+        }
+      }
+
+      console.log('Phone number:', phone);
+
       // Check if it's a backup code
       if (token.includes('-') && token.length === 9) {
+        console.log('🔑 Detected backup code format');
         const backupResult = await otpService.verifyBackupCode(userId, token);
         if (backupResult.success) {
           // Log successful backup code login
@@ -400,25 +452,32 @@ class TwoFactorService {
             usedBackupCode: true
           };
         } else {
+          console.log('❌ Backup code verification failed:', backupResult.message);
           return backupResult;
         }
       }
 
+      console.log('🔢 Detected regular token format');
       let isValidToken = false;
 
       if (user.two_factor_method === 'sms') {
         // For SMS method, verify the OTP
-        if (user.phone && otpService.isTestPhoneNumber(user.phone) && token === '123456') {
+        if (phone && otpService.isTestPhoneNumber(phone) && token === otp) {
           // Test phone number with fixed OTP
           isValidToken = true;
-        } else {
+        } else if (phone) {
           // Verify SMS OTP
-          const otpResult = await otpService.verifyOTP(user.phone, token, '2FA_LOGIN');
+          const otpResult = await otpService.verifyOTP(phone, token, '2FA_LOGIN');
           isValidToken = otpResult.success;
+        } else {
+          return {
+            success: false,
+            message: 'Phone number not found for SMS verification.'
+          };
         }
       } else {
         // For authenticator method, verify TOTP
-        if (user.phone && otpService.isTestPhoneNumber(user.phone) && token === '123456') {
+        if (phone && otpService.isTestPhoneNumber(phone) && token === otp) {
           // Test phone number with fixed OTP
           isValidToken = true;
         } else {
@@ -426,6 +485,8 @@ class TwoFactorService {
           isValidToken = this.verifyToken(user.two_factor_secret, token);
         }
       }
+
+      console.log('Token valid:', isValidToken);
 
       if (!isValidToken) {
         // Log failed attempt
@@ -448,8 +509,10 @@ class TwoFactorService {
         ip_address: ipAddress,
         user_agent: userAgent,
         method: user.two_factor_method,
-        test_mode: user.phone && otpService.isTestPhoneNumber(user.phone)
+        test_mode: phone && otpService.isTestPhoneNumber(phone)
       });
+
+      console.log('✅ 2FA verification successful');
 
       return {
         success: true,
@@ -473,7 +536,7 @@ class TwoFactorService {
         SELECT two_factor_enabled, two_factor_method,
                CASE WHEN two_factor_secret IS NOT NULL THEN 1 ELSE 0 END as has_secret
         FROM users 
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       if (userResult.rows.length === 0) {
@@ -490,7 +553,7 @@ class TwoFactorService {
         SELECT COUNT(*) as total_codes, 
                COUNT(CASE WHEN is_used = 0 THEN 1 END) as unused_codes
         FROM two_factor_backup_codes 
-        WHERE user_id = $1
+        WHERE user_id = ?
       `, [userId]);
 
       const backupCodes = backupCodesResult.rows[0] || { total_codes: 0, unused_codes: 0 };
@@ -522,7 +585,7 @@ class TwoFactorService {
       const userResult = await query(`
         SELECT password_hash, two_factor_secret, two_factor_enabled, two_factor_method, email 
         FROM users 
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       if (userResult.rows.length === 0) {
@@ -618,7 +681,7 @@ class TwoFactorService {
       const userResult = await query(`
         SELECT phone, two_factor_enabled, two_factor_method
         FROM users 
-        WHERE id = $1
+        WHERE id = ?
       `, [userId]);
 
       if (userResult.rows.length === 0) {

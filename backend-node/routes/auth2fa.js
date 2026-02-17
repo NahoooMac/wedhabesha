@@ -13,7 +13,7 @@ const router = express.Router();
 async function getUserPhone(userId) {
   try {
     // Check couples table if user is a couple
-    const coupleResult = await query(`SELECT phone FROM couples WHERE user_id = $1`, [userId]);
+    const coupleResult = await query(`SELECT phone FROM couples WHERE user_id = ?`, [userId]);
     if (coupleResult.rows.length > 0 && coupleResult.rows[0].phone && String(coupleResult.rows[0].phone).trim()) {
       return coupleResult.rows[0].phone;
     }
@@ -23,7 +23,7 @@ async function getUserPhone(userId) {
   
   try {
     // Check vendors table if user is a vendor
-    const vendorResult = await query(`SELECT phone FROM vendors WHERE user_id = $1`, [userId]);
+    const vendorResult = await query(`SELECT phone FROM vendors WHERE user_id = ?`, [userId]);
     if (vendorResult.rows.length > 0 && vendorResult.rows[0].phone && String(vendorResult.rows[0].phone).trim()) {
       return vendorResult.rows[0].phone;
     }
@@ -44,8 +44,6 @@ const resetPasswordValidation = [
   body('resetToken').notEmpty().withMessage('Reset token is required'),
   body('otpCode').isLength({ min: 6, max: 6 }).withMessage('OTP code must be 6 digits'),
   body('newPassword').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
-    .withMessage('Password must contain uppercase, lowercase, number, and special character')
 ];
 
 const verify2FAValidation = [
@@ -96,8 +94,12 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
 // Verify OTP and reset password
 router.post('/reset-password', resetPasswordValidation, async (req, res) => {
   try {
+    console.log('=== Reset Password Request ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({
         error: 'Validation Error',
         message: 'Invalid input data',
@@ -108,15 +110,21 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
     const { resetToken, otpCode, newPassword } = req.body;
     const ipAddress = req.ip || req.connection.remoteAddress;
 
+    console.log('Calling verifyPasswordResetOTP...');
     // Verify OTP
     const otpResult = await otpService.verifyPasswordResetOTP(resetToken, otpCode, ipAddress);
     
+    console.log('OTP verification result:', otpResult);
+
     if (!otpResult.success) {
+      console.log('❌ OTP verification failed:', otpResult.message);
       return res.status(400).json({
         error: 'Bad Request',
         message: otpResult.message
       });
     }
+
+    console.log('✅ OTP verified, updating password...');
 
     // Hash new password
     const saltRounds = 12;
@@ -129,10 +137,12 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
       WHERE id = $2
     `, [passwordHash, otpResult.userId]);
 
+    console.log('✅ Password updated successfully for user:', otpResult.userId);
+
     // Send security alert
     await otpService.logSecurityEvent(otpResult.userId, 'password_reset_completed', {
       ip_address: ipAddress,
-      phone: phone
+      email: otpResult.email
     });
 
     res.json({
@@ -140,7 +150,7 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Reset password error:', error);
+    console.error('❌ Reset password error:', error);
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to reset password'
@@ -265,6 +275,38 @@ router.post('/2fa/enable', authenticateToken, verify2FAValidation, async (req, r
     const result = await twoFactorService.enable2FA(userId, userPhone, token, method, ipAddress, userAgent);
     
     if (result.success) {
+      // Create system notification for 2FA enabled
+      try {
+        const timestamp = new Date().toLocaleString('en-US', { 
+          timeZone: 'Africa/Addis_Ababa',
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        });
+        
+        const methodName = method === 'sms' ? 'SMS' : 'Authenticator App';
+        
+        await query(`
+          INSERT INTO notifications (user_id, type, title, message, is_read, data)
+          VALUES (?, ?, ?, ?, 0, ?)
+        `, [
+          userId,
+          'info',
+          'Two-Factor Authentication Enabled',
+          `Two-factor authentication via ${methodName} was successfully enabled on ${timestamp}. Your account is now more secure.`,
+          JSON.stringify({ 
+            event: '2fa_enabled',
+            method: method,
+            ip_address: ipAddress,
+            timestamp: new Date().toISOString()
+          })
+        ]);
+        
+        console.log('✅ 2FA enabled notification created for user:', userId);
+      } catch (notifError) {
+        console.error('Failed to create 2FA enabled notification:', notifError);
+        // Don't fail the 2FA enable if notification fails
+      }
+      
       res.json({
         message: result.message,
         backupCodes: result.backupCodes,
@@ -282,6 +324,76 @@ router.post('/2fa/enable', authenticateToken, verify2FAValidation, async (req, r
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to enable 2FA'
+    });
+  }
+});
+
+// Send verification code for disabling 2FA (for SMS method)
+router.post('/2fa/disable/send-code', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get user's 2FA method and phone
+    const userResult = await query(`
+      SELECT two_factor_enabled, two_factor_method 
+      FROM users 
+      WHERE id = ?
+    `, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'User not found'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.two_factor_enabled) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '2FA is not enabled for this account'
+      });
+    }
+
+    // Only send code for SMS method
+    if (user.two_factor_method !== 'sms') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'This endpoint is only for SMS-based 2FA. Please use your authenticator app.'
+      });
+    }
+
+    // Get phone number
+    const userPhone = await getUserPhone(userId);
+    
+    if (!userPhone) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'No phone number found for SMS verification'
+      });
+    }
+
+    // Send OTP code
+    const otpResult = await otpService.generateAndSendOTP(userPhone, '2FA_DISABLE', userId);
+
+    if (otpResult.success) {
+      res.json({
+        message: 'Verification code sent to your phone',
+        phone: userPhone.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') // Mask middle digits
+      });
+    } else {
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: otpResult.message || 'Failed to send verification code'
+      });
+    }
+
+  } catch (error) {
+    console.error('Send disable 2FA code error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to send verification code'
     });
   }
 });
@@ -306,6 +418,35 @@ router.post('/2fa/disable', authenticateToken, async (req, res) => {
     const result = await twoFactorService.disable2FA(userId, userPhone, currentPassword, token, ipAddress, userAgent);
     
     if (result.success) {
+      // Create system notification for 2FA disabled
+      try {
+        const timestamp = new Date().toLocaleString('en-US', { 
+          timeZone: 'Africa/Addis_Ababa',
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        });
+        
+        await query(`
+          INSERT INTO notifications (user_id, type, title, message, is_read, data)
+          VALUES (?, ?, ?, ?, 0, ?)
+        `, [
+          userId,
+          'alert',
+          'Two-Factor Authentication Disabled',
+          `Two-factor authentication was disabled on ${timestamp}. If you didn't make this change, please enable 2FA immediately and contact support.`,
+          JSON.stringify({ 
+            event: '2fa_disabled',
+            ip_address: ipAddress,
+            timestamp: new Date().toISOString()
+          })
+        ]);
+        
+        console.log('✅ 2FA disabled notification created for user:', userId);
+      } catch (notifError) {
+        console.error('Failed to create 2FA disabled notification:', notifError);
+        // Don't fail the 2FA disable if notification fails
+      }
+      
       res.json({
         message: result.message
       });
@@ -328,35 +469,85 @@ router.post('/2fa/disable', authenticateToken, async (req, res) => {
 // Verify 2FA during login
 router.post('/2fa/verify', async (req, res) => {
   try {
-    const { phone, password, token } = req.body;
+    console.log('=== 2FA Verify Request ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
     
-    if (!phone || !password || !token) {
+    const { phone, email, password, token } = req.body;
+    
+    // Accept either phone or email
+    const identifier = phone || email;
+    
+    if (!identifier || !password || !token) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({
         error: 'Bad Request',
-        message: 'Phone, password, and 2FA token are required'
+        message: 'Email/phone, password, and 2FA token are required'
       });
     }
 
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent');
 
-    // First verify phone and password
-    const userResult = await query(`
-      SELECT id, email, phone, password_hash, user_type, auth_provider, is_active, two_factor_enabled
-      FROM users 
-      WHERE phone = $1 AND auth_provider = 'EMAIL'
-    `, [phone]);
+    let user = null;
 
-    if (userResult.rows.length === 0) {
+    // Try to find user by email first
+    if (email) {
+      console.log('🔍 Looking up user by email:', email);
+      const emailResult = await query(`
+        SELECT id, email, password_hash, user_type, auth_provider, is_active, two_factor_enabled
+        FROM users
+        WHERE email = ? AND auth_provider = 'EMAIL'
+      `, [email]);
+      
+      console.log('Email lookup result:', emailResult.rows.length, 'rows');
+      
+      if (emailResult.rows.length > 0) {
+        user = emailResult.rows[0];
+        console.log('✅ User found by email:', user.id, user.email);
+      }
+    }
+
+    // If not found by email, try phone number
+    if (!user && phone) {
+      console.log('🔍 Looking up user by phone:', phone);
+      // Find user by phone number from couples table
+      let userResult = await query(`
+        SELECT u.id, u.email, u.password_hash, u.user_type, u.auth_provider, u.is_active, u.two_factor_enabled, c.phone
+        FROM users u
+        JOIN couples c ON u.id = c.user_id
+        WHERE c.phone = ? AND u.auth_provider = 'EMAIL'
+      `, [phone]);
+
+      console.log('Couples lookup result:', userResult.rows.length, 'rows');
+
+      // If not found in couples, check vendors
+      if (userResult.rows.length === 0) {
+        userResult = await query(`
+          SELECT u.id, u.email, u.password_hash, u.user_type, u.auth_provider, u.is_active, u.two_factor_enabled, v.phone
+          FROM users u
+          JOIN vendors v ON u.id = v.user_id
+          WHERE v.phone = ? AND u.auth_provider = 'EMAIL'
+        `, [phone]);
+        
+        console.log('Vendors lookup result:', userResult.rows.length, 'rows');
+      }
+
+      if (userResult.rows.length > 0) {
+        user = userResult.rows[0];
+        console.log('✅ User found by phone:', user.id, user.email);
+      }
+    }
+
+    if (!user) {
+      console.log('❌ User not found');
       return res.status(401).json({
         error: 'Unauthorized',
-        message: 'Invalid phone or password'
+        message: 'Invalid credentials. Please check your email/phone and password.'
       });
     }
 
-    const user = userResult.rows[0];
-
     if (!user.is_active) {
+      console.log('❌ Account is deactivated');
       return res.status(401).json({
         error: 'Unauthorized',
         message: 'Account is deactivated'
@@ -364,26 +555,35 @@ router.post('/2fa/verify', async (req, res) => {
     }
 
     // Verify password
+    console.log('🔐 Verifying password...');
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
+      console.log('❌ Invalid password');
       return res.status(401).json({
         error: 'Unauthorized',
-        message: 'Invalid phone or password'
+        message: 'Invalid credentials. Please check your email/phone and password.'
       });
     }
+    console.log('✅ Password is valid');
 
     // Verify 2FA token
+    console.log('🔐 Verifying 2FA token:', token);
     const twoFAResult = await twoFactorService.verifyLogin2FA(user.id, token, ipAddress, userAgent);
     
+    console.log('2FA verification result:', twoFAResult);
+    
     if (!twoFAResult.success) {
+      console.log('❌ 2FA verification failed:', twoFAResult.message);
       return res.status(401).json({
         error: 'Unauthorized',
         message: twoFAResult.message
       });
     }
+    
+    console.log('✅ 2FA verification successful');
 
     // Update last login
-    await query('UPDATE users SET last_login_at = datetime("now") WHERE id = $1', [user.id]);
+    await query('UPDATE users SET last_login_at = datetime("now") WHERE id = ?', [user.id]);
 
     // Generate access token
     const accessToken = jwt.sign(
@@ -391,6 +591,8 @@ router.post('/2fa/verify', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
+
+    console.log('✅ Login successful, returning access token');
 
     res.json({
       access_token: accessToken,
@@ -407,7 +609,7 @@ router.post('/2fa/verify', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('2FA verify login error:', error);
+    console.error('❌ 2FA verify login error:', error);
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to verify 2FA login'
@@ -466,12 +668,23 @@ router.post('/login/check-2fa', async (req, res) => {
       });
     }
 
-    // Verify phone and password first
-    const userResult = await query(`
-      SELECT id, email, phone, password_hash, user_type, two_factor_enabled, is_active
-      FROM users 
-      WHERE phone = $1 AND auth_provider = 'EMAIL'
+    // Find user by phone number from couples or vendors table
+    let userResult = await query(`
+      SELECT u.id, u.email, u.password_hash, u.user_type, u.two_factor_enabled, u.two_factor_method, u.is_active, c.phone
+      FROM users u
+      JOIN couples c ON u.id = c.user_id
+      WHERE c.phone = ? AND u.auth_provider = 'EMAIL'
     `, [phone]);
+
+    // If not found in couples, check vendors
+    if (userResult.rows.length === 0) {
+      userResult = await query(`
+        SELECT u.id, u.email, u.password_hash, u.user_type, u.two_factor_enabled, u.two_factor_method, u.is_active, v.phone
+        FROM users u
+        JOIN vendors v ON u.id = v.user_id
+        WHERE v.phone = ? AND u.auth_provider = 'EMAIL'
+      `, [phone]);
+    }
 
     if (userResult.rows.length === 0) {
       return res.status(401).json({
@@ -500,9 +713,28 @@ router.post('/login/check-2fa', async (req, res) => {
 
     res.json({
       requires2FA: Boolean(user.two_factor_enabled),
+      twoFactorMethod: user.two_factor_method || 'authenticator',
       userId: user.id,
       phone: user.phone
     });
+
+    // If SMS 2FA is enabled, automatically send the OTP code after responding
+    if (user.two_factor_enabled && user.two_factor_method === 'sms' && user.phone) {
+      // Send SMS OTP asynchronously (don't wait for it)
+      setImmediate(async () => {
+        try {
+          const otpResult = await otpService.generateAndSendOTP(user.phone, '2FA_LOGIN', user.id);
+          
+          if (!otpResult.success) {
+            console.error('Failed to send login SMS OTP:', otpResult.message);
+          } else {
+            console.log('✅ Login SMS OTP sent successfully to:', user.phone);
+          }
+        } catch (error) {
+          console.error('Error sending login SMS OTP:', error);
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Check 2FA requirement error:', error);

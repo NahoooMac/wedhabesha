@@ -87,6 +87,7 @@ export const navigateToThread = (threadId: string) => {
 /**
  * Handle "Message Vendor" button click
  * Creates/opens thread and redirects to Communication tab
+ * For vendors on landing page, stores intent and redirects to login/dashboard
  */
 export const handleMessageVendor = async (
   vendorId: string, 
@@ -95,11 +96,33 @@ export const handleMessageVendor = async (
   onError?: (error: string) => void
 ) => {
   try {
-    // Create or get existing thread
+    // Check if user is authenticated
+    if (!isAuthenticated()) {
+      // Store the vendor message intent for after login
+      localStorage.setItem('pendingVendorMessage', JSON.stringify({ vendorId, vendorName }));
+      
+      // Redirect to login with return path
+      window.location.href = '/login?returnTo=vendor-messages';
+      return;
+    }
+    
+    // User is authenticated - create or get existing thread
     const result = await createOrGetThread(vendorId);
     
-    // Navigate to the thread
-    navigateToThread(result.thread.id);
+    // Store the thread ID to open
+    localStorage.setItem('openThreadId', result.thread.id);
+    
+    // Check if user is already on the dashboard
+    const currentPath = window.location.pathname;
+    const isDashboard = currentPath.includes('/dashboard');
+    
+    if (isDashboard) {
+      // Already on dashboard - just trigger the event to open the thread
+      navigateToThread(result.thread.id);
+    } else {
+      // Not on dashboard - redirect to dashboard with Messages tab
+      window.location.href = '/dashboard?tab=communication';
+    }
     
     // Call success callback if provided
     if (onSuccess) {

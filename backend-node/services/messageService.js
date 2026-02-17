@@ -541,6 +541,18 @@ class MessageService {
         // Don't fail the message send if reminder scheduling fails
       }
 
+      // Create notification for unread message
+      try {
+        await this.createUnreadMessageNotification(threadId, senderId, senderType, {
+          content: decryptedContent,
+          senderName: await this.getSenderName(senderId, senderType),
+          messageId: message.id
+        });
+      } catch (notificationError) {
+        console.error('⚠️ Failed to create unread message notification:', notificationError);
+        // Don't fail the message send if notification creation fails
+      }
+
       return {
         success: true,
         message: {
@@ -844,6 +856,14 @@ class MessageService {
         [messageId]
       );
 
+      // Remove unread message notification for this message
+      try {
+        await this.removeUnreadMessageNotification(messageId, userId);
+      } catch (notificationError) {
+        console.warn('⚠️ Failed to remove unread message notification:', notificationError);
+        // Don't fail the mark as read operation if notification removal fails
+      }
+
       console.log(`✅ Message ${messageId} marked as read by user ${userId}`);
 
       return {
@@ -923,6 +943,14 @@ class MessageService {
             console.warn(`⚠️ Failed to mark message ${message.id} as read:`, insertError);
           }
         }
+      }
+
+      // Remove all unread message notifications for this thread and user
+      try {
+        await this.removeThreadUnreadNotifications(threadId, userId);
+      } catch (notificationError) {
+        console.warn('⚠️ Failed to remove thread unread notifications:', notificationError);
+        // Don't fail the operation if notification removal fails
       }
 
       console.log(`✅ Marked ${markedCount} messages as read in thread ${threadId} for user ${userId}`);
@@ -1309,6 +1337,135 @@ class MessageService {
       await smsReminderService.cancelUnreadReminder(userId, threadId);
     } catch (error) {
       console.error('❌ Failed to cancel SMS reminder:', error);
+    }
+  }
+
+  /**
+   * Create notification for unread message
+   * @param {string} threadId - Thread ID
+   * @param {string} senderId - ID of the message sender
+   * @param {string} senderType - Type of sender (couple/vendor)
+   * @param {Object} messageInfo - Message information
+   */
+  async createUnreadMessageNotification(threadId, senderId, senderType, messageInfo) {
+    try {
+      // Get thread participants
+      const threadQuery = `
+        SELECT couple_id, vendor_id, 
+               c.user_id as couple_user_id,
+               v.user_id as vendor_user_id
+        FROM message_threads mt
+        LEFT JOIN couples c ON mt.couple_id = c.id
+        LEFT JOIN vendors v ON mt.vendor_id = v.id
+        WHERE mt.id = ?
+      `;
+      
+      const threadResult = await query(threadQuery, [threadId]);
+      if (threadResult.rows.length === 0) return;
+      
+      const thread = threadResult.rows[0];
+      
+      // Determine recipient (opposite of sender)
+      let recipientUserId = null;
+      
+      if (senderType.toLowerCase() === 'couple') {
+        // Message from couple to vendor
+        recipientUserId = thread.vendor_user_id;
+      } else if (senderType.toLowerCase() === 'vendor') {
+        // Message from vendor to couple
+        recipientUserId = thread.couple_user_id;
+      }
+      
+      if (!recipientUserId) {
+        console.warn('⚠️ No recipient found for notification');
+        return;
+      }
+
+      // Create notification in database
+      const notificationQuery = `
+        INSERT INTO notifications (user_id, type, title, message, link, data, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+      `;
+
+      const messagePreview = messageInfo.content.length > 100 
+        ? messageInfo.content.substring(0, 100) + '...' 
+        : messageInfo.content;
+
+      await query(notificationQuery, [
+        recipientUserId,
+        'message',
+        'New Message',
+        `You have an unread message from ${messageInfo.senderName}`,
+        `/messages/${threadId}`,
+        JSON.stringify({
+          threadId: threadId,
+          messageId: messageInfo.messageId,
+          senderName: messageInfo.senderName,
+          preview: messagePreview
+        })
+      ]);
+
+      console.log(`✅ Created unread message notification for user ${recipientUserId} from ${messageInfo.senderName}`);
+      
+    } catch (error) {
+      console.error('❌ Failed to create unread message notification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove unread message notification when message is read
+   * @param {string} messageId - Message ID that was read
+   * @param {string} userId - User ID who read the message
+   */
+  async removeUnreadMessageNotification(messageId, userId) {
+    try {
+      // Find and mark notification as read (will be auto-deleted after 24 hours)
+      const updateQuery = `
+        UPDATE notifications
+        SET is_read = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+        AND type = 'message'
+        AND json_extract(data, '$.messageId') = ?
+      `;
+
+      const result = await query(updateQuery, [userId, messageId]);
+      
+      if (result.changes > 0) {
+        console.log(`✅ Marked notification as read for message ${messageId} by user ${userId}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to remove unread message notification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove all unread message notifications for a thread when all messages are read
+   * @param {string} threadId - Thread ID
+   * @param {string} userId - User ID who read the messages
+   */
+  async removeThreadUnreadNotifications(threadId, userId) {
+    try {
+      // Mark all message notifications for this thread as read
+      const updateQuery = `
+        UPDATE notifications
+        SET is_read = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+        AND type = 'message'
+        AND json_extract(data, '$.threadId') = ?
+      `;
+
+      const result = await query(updateQuery, [userId, threadId]);
+      
+      if (result.changes > 0) {
+        console.log(`✅ Marked ${result.changes} notifications as read for thread ${threadId} by user ${userId}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to remove thread unread notifications:', error);
+      throw error;
     }
   }
 }

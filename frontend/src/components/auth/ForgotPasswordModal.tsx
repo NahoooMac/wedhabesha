@@ -55,6 +55,7 @@ const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen, onClo
     },
     onError: (error: any) => {
       console.error('Reset password error:', error);
+      // Error will be displayed in the form
     }
   });
 
@@ -273,9 +274,14 @@ const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen, onClo
 
               {resetPasswordMutation.error && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <p className="text-sm text-red-600 dark:text-red-400">
+                  <p className="text-sm text-red-600 dark:text-red-400 font-medium">
                     {(resetPasswordMutation.error as any)?.message || 'Failed to reset password'}
                   </p>
+                  {(resetPasswordMutation.error as any)?.details && (
+                    <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                      {JSON.stringify((resetPasswordMutation.error as any).details)}
+                    </p>
+                  )}
                 </div>
               )}
 
