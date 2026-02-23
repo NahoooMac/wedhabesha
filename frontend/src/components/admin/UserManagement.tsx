@@ -526,6 +526,9 @@ const UserManagement: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                 <th className="text-left py-3 px-6 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  ID
+                </th>
+                <th className="text-left py-3 px-6 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   User
                 </th>
                 <th className="text-left py-3 px-6 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -545,6 +548,11 @@ const UserManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {usersData?.users.map((user) => (
                 <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="py-4 px-6">
+                    <span className="text-sm font-mono text-slate-600 dark:text-slate-400">
+                      #{user.id}
+                    </span>
+                  </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
