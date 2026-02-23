@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Download, Check, X, MapPin, Navigation, Copy, Sparkles, Heart, Calendar } from 'lucide-react';
+import { Download, Check, X, MapPin, Navigation, Copy, Heart, Calendar } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { invitationApi, rsvpApi, InvitationData } from '../lib/api';
 import { cacheInvalidationService } from '../lib/cacheInvalidation';
@@ -7,6 +7,46 @@ import { InvitationEngine, TEMPLATE_METADATA } from '../components/invitations/I
 import html2canvas from 'html2canvas';
 
 // --- HELPERS ---
+
+// Helper to generate Google Calendar event URL
+function generateGoogleCalendarUrl(invitation: InvitationData): string {
+  const customization = invitation.wedding.customization as any;
+  const weddingTitle = customization?.wedding_title || 'Wedding Invitation';
+  const ceremonyDate = customization?.ceremony_date || invitation.wedding.wedding_date;
+  const ceremonyTime = customization?.ceremony_time || '4:00 PM';
+  const venueName = customization?.venue_name || invitation.wedding.venue_name;
+  const venueAddress = customization?.venue_address || invitation.wedding.venue_address || '';
+  
+  // Parse date and time
+  const dateObj = new Date(ceremonyDate);
+  const [time, period] = ceremonyTime.split(' ');
+  let [hours, minutes] = time.split(':').map(Number);
+  
+  // Convert to 24-hour format
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  
+  dateObj.setHours(hours, minutes || 0, 0, 0);
+  
+  // Format start time (YYYYMMDDTHHMMSS)
+  const startTime = dateObj.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  
+  // End time (assume 4 hours duration)
+  const endDate = new Date(dateObj.getTime() + 4 * 60 * 60 * 1000);
+  const endTime = endDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  
+  // Build Google Calendar URL
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: weddingTitle,
+    dates: `${startTime}/${endTime}`,
+    details: `You are invited to celebrate ${weddingTitle}`,
+    location: `${venueName}, ${venueAddress}`,
+    trp: 'false'
+  });
+  
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
 
 // Helper to draw rounded rectangles on canvas (for image generation)
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
@@ -250,9 +290,6 @@ const handleDownload = async () => {
         useCORS: true,
         allowTaint: true,
         logging: false,
-        backgroundColor: null, 
-        scale: 2, 
-        windowWidth: 1200, // <--- Forces the renderer to think the screen is wide
       });
 
       const invitationWidth = canvas.width;
@@ -456,7 +493,7 @@ const handleDownload = async () => {
                             </div>
 
                             {submitted ? (
-                                <div className="bg-gradient-to-br from-rose-50 to-white rounded-2xl p-8 text-center border border-rose-100">
+                                <div className="bg-gradient-to-br from-rose-50 to-white rounded-2xl p-8 text-center border border-rose-100 space-y-4">
                                     <div className={`w-12 h-12 mx-auto rounded-full flex items-center justify-center mb-4 shadow-sm ${
                                         rsvpStatus === 'accepted' ? 'bg-rose-500 text-white' : 'bg-white border border-gray-200 text-gray-400'
                                     }`}>
@@ -465,10 +502,21 @@ const handleDownload = async () => {
                                     <h4 className="font-bold text-gray-900 text-lg">
                                         {rsvpStatus === 'accepted' ? 'See you there!' : 'Response Sent'}
                                     </h4>
-                                    <p className="text-sm text-gray-500 mt-1 mb-4">
+                                    <p className="text-sm text-gray-500 mt-1">
                                         {rsvpStatus === 'accepted' ? 'Get ready for a wonderful celebration.' : 'Thank you for letting us know.'}
                                     </p>
-                                    <button onClick={() => setSubmitted(false)} className="text-xs font-bold text-rose-400 underline decoration-rose-200 underline-offset-4 hover:text-rose-600">
+                                    
+                                    {rsvpStatus === 'accepted' && (
+                                        <button
+                                            onClick={() => window.open(generateGoogleCalendarUrl(invitation), '_blank')}
+                                            className="w-full py-3 px-4 bg-white border-2 border-rose-200 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-50 hover:border-rose-300 transition-all shadow-sm flex items-center justify-center gap-2 mt-4"
+                                        >
+                                            <Calendar size={16} />
+                                            Schedule on Google Calendar
+                                        </button>
+                                    )}
+                                    
+                                    <button onClick={() => setSubmitted(false)} className="text-xs font-bold text-rose-400 underline decoration-rose-200 underline-offset-4 hover:text-rose-600 mt-2">
                                         Edit Response
                                     </button>
                                 </div>
